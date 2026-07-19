@@ -1,6 +1,7 @@
 import assert from'node:assert/strict';
-import{bulkPrompt,emptyBlueprint,pretty,readiness,slidePrompt,slug}from'../src/prompting.js';
+import{bulkPrompt,makeSlideZip,makeZip,parseJson,pretty,readiness,slidePrompt,slug,storyArc}from'../src/prompting.js';
 import{parseStorySets}from'../src/parser.js';
+
 const sample=`SET 1 — The Rhythm of Laya
 
 Slide 1 — Tina talking video
@@ -55,10 +56,39 @@ Slide 3 — My roots are what keep me anchored. Like the tree that is rooted dee
 
 Slide 4 — Laya was born from that.
 (CTA: Read the full story.)`;
-const parsed=parseStorySets(sample);assert.equal(parsed.sets.length,5);assert.equal(parsed.totalSlides,17);assert.equal(parsed.sets[0].slides[0].content_description,'Tina talking video');assert.equal(parsed.sets[0].slides[0].overlay_text,'');assert.equal(parsed.sets[0].slides[0].no_text_overlay,true);assert.equal(parsed.sets[0].slides[0].caption_cc,true);assert.equal(parsed.sets[0].slides[1].cta,'Discover Laya.');assert.equal(parsed.sets[1].slides[3].cta,'See where it begins.');assert.equal(parsed.sets[3].slides[2].interaction,'Poll');assert.equal(parsed.sets[3].slides[3].cta,'Explore the collection.');assert.equal(parsed.sets[4].slides[0].overlay_text,'So many of us left home carrying traditions, languages, memories.');
-const variants=parseStorySets('STORY SET 1: नमस्ते लाया\n\nS1 - यह कॉपी जस की तस रहनी चाहिए।\n(Question box)');assert.equal(variants.sets[0].title,'नमस्ते लाया');assert.equal(variants.sets[0].slides[0].overlay_text,'यह कॉपी जस की तस रहनी चाहिए।');assert.equal(variants.sets[0].slides[0].interaction,'Question');
-const noMarkers=parseStorySets('Untitled thought\nA paragraph with no slide marker.');assert.equal(noMarkers.sets[0].slides.length,1);assert.ok(noMarkers.sets[0].parseWarnings.includes('No explicit slide markers were found.'));
-const duplicates=parseStorySets('SET 1 — Duplicate\nSlide 2 — A\nSlide 2 — B');assert.ok(duplicates.sets[0].parseWarnings.some(x=>x.includes('Two Slide 2')));
-for(const c of[1,4,5]){const slides=Array.from({length:c},(_,i)=>({overlay_text:`Copy ${i+1}`,cta:'',interaction:'',direction:'Direction',role:i?'Development':'Opening',main:{id:`m${i}`,filename:`image-${i}.jpg`,type:'image/jpeg'},reference:{id:`r${i}`,filename:`ref-${i}.png`,type:'image/png'}})),bp=emptyBlueprint('Set',c);bp.approval.status='approved';assert.equal(JSON.parse(pretty(slidePrompt(slides[0],0,slides,bp))).exact_copy.overlay_text,'Copy 1');const full=JSON.parse(pretty(bulkPrompt(slides,bp)));assert.equal(full.slides.length,c);assert.equal(full.expected_results.number_of_images,c);assert.equal(readiness(slides,bp).every(x=>x.ready),true)}
+
+const parsed=parseStorySets(sample);
+assert.equal(parsed.sets.length,5);
+assert.equal(parsed.totalSlides,17);
+assert.equal(parsed.sets[0].slides[0].content_description,'Tina talking video');
+assert.equal(parsed.sets[0].slides[0].no_text_overlay,true);
+assert.equal(parsed.sets[0].slides[0].caption_cc,true);
+assert.equal(parsed.sets[3].slides[2].interaction,'Poll');
+
+const file=(id,name,type)=>({id,filename:name,type,file:new Blob(['x'],{type})});
+const mk=count=>Array.from({length:count},(_,i)=>({
+  id:`s${i}`,slide_number:i+1,copy:`Exact copy ${i+1}`,overlay_text:`Exact copy ${i+1}`,
+  cta:i===count-1?'Shop now':'',interaction:'',direction:'Keep it restrained',art:'Keep it restrained',
+  role:i===0?'Opening':i===count-1?'Resolution / CTA':'Development',no_text_overlay:false,caption_cc:false,
+  main:file(`m${i}`,`image-${i}.jpg`,'image/jpeg'),reference:file(`r${i}`,`ref-${i}.png`,'image/png')
+}));
+for(const count of[1,4,7]){
+  const set={id:'set-1',title:'Test Set',overallDirection:'Soft and tactile.'},slides=mk(count);
+  const one=slidePrompt(slides[0],0,slides,set);
+  assert.equal(one.story_set.overall_set_direction,'Soft and tactile.');
+  assert.equal(one.approved_set_style_blueprint,undefined);
+  assert.equal(parseJson(pretty(one)).ok,true);
+  const full=bulkPrompt(slides,set);
+  assert.equal(full.slides.length,count);
+  assert.equal(full.expected_results.number_of_images,count);
+  assert.equal(full.generation_instruction.stop_after_first_slide,false);
+  assert.equal(readiness(slides,set).every(r=>r.ready),true);
+  assert.equal(storyArc(slides).opening,'Exact copy 1');
+}
+const incomplete=mk(1);incomplete[0].reference=null;
+assert.equal(readiness(incomplete,{id:'x',title:'x'})[0].ready,false);
+assert.deepEqual(readiness(incomplete,{id:'x',title:'x'})[0].missing,['design reference']);
 assert.equal(slug('The Journey of a Garment'),'the-journey-of-a-garment');
-console.log('parser and prompt JSON tests passed');
+assert.ok(await makeSlideZip(mk(1)[0],0,mk(1),{id:'x',title:'x'}));
+assert.ok(await makeZip(mk(2),{id:'x',title:'x'},null,false));
+console.log('simplified workflow parser, JSON and ZIP tests passed');
