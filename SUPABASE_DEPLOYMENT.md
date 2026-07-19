@@ -1,96 +1,90 @@
 # Supabase & Deployment Guide
 
-Project: `ladytin-story-studio` — ref `exmvsczxgippzcbjdrrj` — https://exmvsczxgippzcbjdrrj.supabase.co
+Project: `ladytin-story-studio` — ref `exmvsczxgippzcbjdrrj`
 
 ## Browser-safe configuration
 
-The build injects two public values (see `scripts/build.mjs`):
+The build injects only:
 
 ```env
 SUPABASE_URL=https://exmvsczxgippzcbjdrrj.supabase.co
-SUPABASE_PUBLISHABLE_KEY=   # sb_publishable_… from Supabase → Settings → API keys
+SUPABASE_PUBLISHABLE_KEY=
 ```
 
-Set them locally in `.env` (then `set -a; source .env; npm run build`) and on Vercel as
-project environment variables. No service-role key, database password or Pinterest
-secret is ever exposed to the browser; the built bundle only contains the publishable key.
+No service-role key, raw application password, database password or Pinterest secret is exposed to the browser.
+
+## Shared password access
+
+The interface contains one password field and one Enter button. It has no account creation, address field, confirmation flow or forgotten-password flow.
+
+The password is verified inside the `shared-access` Supabase Edge Function against a one-way bcrypt verifier stored in the private schema. After verification:
+
+1. A short-lived one-time ticket is created server-side.
+2. The browser creates an anonymous Supabase session.
+3. The Edge Function consumes the ticket and adds a twelve-hour shared-access claim to that anonymous session.
+4. RLS grants the valid shared session one honest `editor` role across cloud projects.
+
+Failed attempts are locked for fifteen minutes after five failures. The raw password is never committed, returned, logged or stored in browser storage.
+
+Required Supabase dashboard setting:
+
+```text
+Authentication → Providers → Anonymous Sign-Ins → Enable
+```
+
+`.env.example` includes an empty `APP_ACCESS_PASSWORD=` placeholder for secret-management workflows only. The live project stores only the protected verifier.
 
 ## Migrations
 
-`supabase/migrations/` contains:
+The baseline collaboration and Pinterest migrations remain idempotent. The active shared-access additions are:
 
-1. `20260719173023_baseline_collaboration_schema.sql` — idempotent representation of the
-   schema that already exists in the live database (tables, RLS, storage policies,
-   triggers, realtime publication). Do **not** re-run it blindly against production; it is
-   a no-op there, but the intended use on a fresh checkout is
-   `supabase migration repair --status applied 20260719173023`.
-2. `20260719190000_invite_acceptance_and_pin_upsert_support.sql` — already applied to the
-   live database. Adds `public.accept_project_invite(text)` and the
-   `(project_id, pinterest_pin_id)` unique index used by Pin upserts.
+- `20260719193000_shared_password_rate_limit.sql`
+- `20260719194000_shared_password_verifier.sql`
+- `20260719195000_anonymous_shared_access_tickets.sql`
+- `20260719195500_shared_editor_role.sql`
+
+The older invitation schema is retained only as historical database compatibility. It is not exposed by the current interface or cloud module.
 
 ## Edge Functions
 
-`supabase/functions/pinterest/index.ts` is deployed (JWT verification on). Actions:
-`status`, `authorize`, `callback`, `sync`, `disconnect`. Without the `PINTEREST_*`
-secrets every action returns a safe `{configured:false}` payload and the frontend keeps
-snapshot import and Original Editorial Direction available.
+- `shared-access`: password verification, lockout, one-time ticket issue and anonymous-session activation.
+- `pinterest`: official Pinterest OAuth and board synchronisation when credentials are available.
 
-Secrets (Supabase → Edge Functions → Secrets — never in Vercel or the repo):
+Pinterest secrets stay server-side:
 
 ```env
 PINTEREST_APP_ID=
 PINTEREST_APP_SECRET=
 PINTEREST_REDIRECT_URI=https://ladytin-story-studio.vercel.app/project/pinterest/callback
 PINTEREST_BOARD_URL=https://pin.it/7mSBrJubi
-PINTEREST_OAUTH_STATE_SECRET=   # ≥32 random characters
-PINTEREST_TOKEN_ENCRYPTION_KEY= # ≥32 random characters
+PINTEREST_OAUTH_STATE_SECRET=
+PINTEREST_TOKEN_ENCRYPTION_KEY=
 ```
 
-## Security verification queries
-
-Run in the SQL editor:
+## Verification
 
 ```sql
--- Built-in check suite (RLS everywhere, token lockdown, private bucket)
 select * from private.verify_ladytin_security();
-
--- Policies per table
 select tablename, policyname, cmd from pg_policies where schemaname='public' order by 1;
-
--- Realtime publication
 select tablename from pg_publication_tables where pubname='supabase_realtime';
-
--- Invitation function exists and is restricted
-select proname, prosecdef from pg_proc p join pg_namespace n on n.oid=p.pronamespace
-where n.nspname='public' and proname='accept_project_invite';
 ```
 
-## Authenticated smoke test
+Smoke test:
 
-1. Open the deployed app, sign in via magic link.
-2. Create a project; confirm the URL becomes `/project/{id}` and survives refresh.
-3. Paste story copy in `01 Copy`, parse, confirm; watch the topbar flip Saving → Saved.
-4. Upload a main asset in `03 Assets & References`; refresh; the file stays usable and a
-   slide package ZIP downloads with real bytes.
-5. Share Project → invite a second email as viewer; open the invite link in another
-   browser as that user; confirm the viewer badge, read-only fields and working ZIP
-   downloads.
-6. Edit a slide in one browser and watch the other update within a few seconds.
-
-## Manual dashboard actions still required
-
-1. Supabase → Authentication → URL Configuration:
-   - Site URL: `https://ladytin-story-studio.vercel.app`
-   - Redirect URLs: `https://ladytin-story-studio.vercel.app/**` and `http://localhost:4173/**`
-2. Supabase → Edge Functions → Secrets: the `PINTEREST_*` values above once Pinterest
-   developer access is approved.
-3. Optional: replace the default Supabase email provider with custom SMTP for production
-   magic-link volume (the default provider is rate-limited).
+1. Open the deployed app and enter the shared password.
+2. Refresh and confirm the session restores without another prompt.
+3. Create or open a project and refresh `/project/{id}`.
+4. Edit a slide in two separate browser contexts and verify Realtime and Presence.
+5. Upload an asset, refresh, then download and reopen individual and bulk ZIPs.
+6. Sign out and confirm the password screen returns.
 
 ## Deploy
 
 ```bash
-npm test && npm run build            # tests gate the build
-npx vercel deploy                    # preview from the feature branch
-npx vercel --prod                    # production after the PR merges
+npm test
+npm run lint
+npm run typecheck
+npm run build
 ```
+
+Merge only after the preview build and browser checks pass.
