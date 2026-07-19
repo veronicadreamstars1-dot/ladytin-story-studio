@@ -1,94 +1,90 @@
-import assert from'node:assert/strict';
-import{bulkPrompt,makeSlideZip,makeZip,parseJson,pretty,readiness,slidePrompt,slug,storyArc}from'../src/prompting.js';
-import{parseStorySets}from'../src/parser.js';
+import assert from 'node:assert/strict';
+import JSZip from 'jszip';
+import {bulkPrompt,makeSlideZip,makeZip,parseJson,pretty,readiness,safeFilename,slidePrompt,slug} from '../src/prompting.js';
+import {parseStorySets} from '../src/parser.js';
 
-const sample=`SET 1 — The Rhythm of Laya
+const fileAsset=(id,filename,type,content)=>({id,filename,type,size:content.length,file:new Blob([content],{type})});
+const main=fileAsset('main-1','MP-41.jpg','image/jpeg',new Uint8Array([255,216,255,224,1,2,3,4]));
+const ref=fileAsset('ref-1','story-ref.png','image/png',new Uint8Array([137,80,78,71,13,10,26,10,5,6]));
+const pdf=fileAsset('ref-pdf','reference-layout.pdf','application/pdf','%PDF-1.4\nLadyTin');
+const video=fileAsset('main-video','tina-video.mov','video/quicktime',new Uint8Array([0,0,0,20,102,116,121,112,113,116,32,32]));
 
-Slide 1 — Tina talking video
-Direction: She talks about getting to California and feeling like she had finally arrived - No text overlay but caption CC
+const slide=(i,m=main,r=ref)=>({id:`s${i}`,slide_number:i+1,copy:`Copy ${i+1}`,overlay_text:`Copy ${i+1}`,cta:i===1?'Explore.':'',interaction:'',direction:'Use restrained editorial spacing.',art:'Use restrained editorial spacing.',role:i===0?'Opening':'Resolution / CTA',main:m,reference:r,no_text_overlay:false,caption_cc:false,content_description:'',internal_note:''});
+const set={id:'set-1',title:'The Journey of a Garment',overallDirection:'Soft, tactile and intimate.'};
+const slides=[slide(0),slide(1,video,pdf)];
 
-Slide 2 — CTA
-Discover Laya.
+assert.equal(slug(set.title),'the-journey-of-a-garment');
+assert.equal(safeFilename(' bad/name:final.jpg '),'bad-name-final.jpg');
+assert.equal(safeFilename('.hidden'),'hidden');
+assert.equal(parseJson(pretty(slidePrompt(slides[0],0,slides,set,null))).ok,true);
+assert.equal(parseJson(pretty(bulkPrompt(slides,set,null))).ok,true);
+assert.equal(readiness(slides,set,null).every(r=>r.ready),true);
 
-
-SET 2 — The Journey of a Garment
-
-Slide 1 — It starts on a wall covered in paper. Everything still possible.
-
-Slide 2 — Then it reaches hands in India. Hands that have been stitching this way for generations.
-
-Slide 3 — The smallest details are always added last. That is where everything comes together.
-
-Slide 4 — What reaches you is not just one garment. It carries centuries of craft, hundreds of hands, and one shared intention.
-(CTA: See where it begins.)
-
-
-SET 3 — Touch, Texture and Craft
-
-Slide 1 — The first thing I do when looking for a new fabric is close my eyes and feel it. If it does not feel right, it does not make it in.
-
-Slide 2 — I have driven hours for the right cloth. That is what it takes.
-
-Slide 3 — Every choice here was deliberate. What you wear when you wear this is not just fabric. It is intention.
-(CTA: Feel the difference.)
-
-
-SET 4 — Which Colour Speaks to You?
-
-Slide 1 — I have been watching the same lotus pond change colour since I was a child. Dawn is soft yellow. By evening, the water turns a colour I have no name for.
-
-Slide 2 — That pond is where every colour in this collection comes from.
-
-Slide 3 — Soft yellows. Sky blues. Deep maroon. The quiet of ivory. The depth of the night sky. Which one feels like you right now?
-(Poll)
-
-Slide 4 — See the full palette.
-(CTA: Explore the collection.)
-
-
-SET 5 — A Letter to Those Who Belong Everywhere
-
-Slide 1 — So many of us left home carrying traditions, languages, memories.
-
-Slide 2 — Pieces of a life that did not fit inside a suitcase.
-
-Slide 3 — My roots are what keep me anchored. Like the tree that is rooted deep in Himachal but reaches everywhere.
-
-Slide 4 — Laya was born from that.
-(CTA: Read the full story.)`;
-
-const parsed=parseStorySets(sample);
-assert.equal(parsed.sets.length,5);
-assert.equal(parsed.totalSlides,17);
-assert.equal(parsed.sets[0].slides[0].content_description,'Tina talking video');
-assert.equal(parsed.sets[0].slides[0].no_text_overlay,true);
-assert.equal(parsed.sets[0].slides[0].caption_cc,true);
-assert.equal(parsed.sets[3].slides[2].interaction,'Poll');
-
-const file=(id,name,type)=>({id,filename:name,type,file:new Blob(['x'],{type})});
-const mk=count=>Array.from({length:count},(_,i)=>({
-  id:`s${i}`,slide_number:i+1,copy:`Exact copy ${i+1}`,overlay_text:`Exact copy ${i+1}`,
-  cta:i===count-1?'Shop now':'',interaction:'',direction:'Keep it restrained',art:'Keep it restrained',
-  role:i===0?'Opening':i===count-1?'Resolution / CTA':'Development',no_text_overlay:false,caption_cc:false,
-  main:file(`m${i}`,`image-${i}.jpg`,'image/jpeg'),reference:file(`r${i}`,`ref-${i}.png`,'image/png')
-}));
-for(const count of[1,4,7]){
-  const set={id:'set-1',title:'Test Set',overallDirection:'Soft and tactile.'},slides=mk(count);
-  const one=slidePrompt(slides[0],0,slides,set);
-  assert.equal(one.story_set.overall_set_direction,'Soft and tactile.');
-  assert.equal(one.approved_set_style_blueprint,undefined);
-  assert.equal(parseJson(pretty(one)).ok,true);
-  const full=bulkPrompt(slides,set);
-  assert.equal(full.slides.length,count);
-  assert.equal(full.expected_results.number_of_images,count);
-  assert.equal(full.generation_instruction.stop_after_first_slide,false);
-  assert.equal(readiness(slides,set).every(r=>r.ready),true);
-  assert.equal(storyArc(slides).opening,'Exact copy 1');
+const singleBlob=await makeSlideZip(slides[0],0,slides,set,null);
+assert.ok(singleBlob.size>0);
+const singleZip=await JSZip.loadAsync(await singleBlob.arrayBuffer());
+const singleRoot='LadyTin-the-journey-of-a-garment-slide-01/';
+const requiredSingle=[
+  `${singleRoot}slide-01-prompt.json`,
+  `${singleRoot}main-asset-MP-41.jpg`,
+  `${singleRoot}selected-reference-story-ref.png`,
+  `${singleRoot}manifest.json`
+];
+for(const name of requiredSingle){
+  assert.ok(singleZip.file(name),`${name} must exist`);
+  const bytes=await singleZip.file(name).async('uint8array');
+  assert.ok(bytes.length>0,`${name} must be non-zero`);
 }
-const incomplete=mk(1);incomplete[0].reference=null;
-assert.equal(readiness(incomplete,{id:'x',title:'x'})[0].ready,false);
-assert.deepEqual(readiness(incomplete,{id:'x',title:'x'})[0].missing,['design reference']);
-assert.equal(slug('The Journey of a Garment'),'the-journey-of-a-garment');
-assert.ok(await makeSlideZip(mk(1)[0],0,mk(1),{id:'x',title:'x'}));
-assert.ok(await makeZip(mk(2),{id:'x',title:'x'},null,false));
-console.log('simplified workflow parser, JSON and ZIP tests passed');
+const prompt=JSON.parse(await singleZip.file(`${singleRoot}slide-01-prompt.json`).async('string'));
+const manifest=JSON.parse(await singleZip.file(`${singleRoot}manifest.json`).async('string'));
+assert.equal(prompt.attachments.main_source_asset.filename,'MP-41.jpg');
+assert.equal(prompt.attachments.selected_design_reference.filename,'story-ref.png');
+assert.equal(manifest.files.main_asset,'main-asset-MP-41.jpg');
+assert.equal(manifest.files.selected_reference,'selected-reference-story-ref.png');
+for(const path of Object.values(manifest.files))assert.ok(singleZip.file(singleRoot+path));
+const extractedMain=await singleZip.file(`${singleRoot}main-asset-MP-41.jpg`).async('uint8array');
+assert.deepEqual([...extractedMain],[255,216,255,224,1,2,3,4]);
+assert.equal(new TextDecoder().decode(extractedMain).startsWith('blob:'),false);
+
+const bulkBlob=await makeZip(slides,set,null,false);
+assert.ok(bulkBlob.size>0);
+const bulkZip=await JSZip.loadAsync(await bulkBlob.arrayBuffer());
+const bulkRoot='LadyTin-the-journey-of-a-garment-bulk-generation-package/';
+const requiredBulk=[
+  `${bulkRoot}bulk-story-set-prompt.json`,
+  `${bulkRoot}manifest.json`,
+  `${bulkRoot}README.txt`,
+  `${bulkRoot}slide-prompts/slide-01-prompt.json`,
+  `${bulkRoot}slide-prompts/slide-02-prompt.json`,
+  `${bulkRoot}main-assets/slide-01-MP-41.jpg`,
+  `${bulkRoot}main-assets/slide-02-tina-video.mov`,
+  `${bulkRoot}selected-references/slide-01-story-ref.png`,
+  `${bulkRoot}selected-references/slide-02-reference-layout.pdf`
+];
+for(const name of requiredBulk){
+  assert.ok(bulkZip.file(name),`${name} must exist`);
+  assert.ok((await bulkZip.file(name).async('uint8array')).length>0,`${name} must be non-zero`);
+}
+JSON.parse(await bulkZip.file(`${bulkRoot}bulk-story-set-prompt.json`).async('string'));
+const bulkManifest=JSON.parse(await bulkZip.file(`${bulkRoot}manifest.json`).async('string'));
+for(const row of bulkManifest.slides){
+  assert.ok(bulkZip.file(bulkRoot+row.prompt_file));
+  assert.ok(bulkZip.file(bulkRoot+row.main_asset_file));
+  assert.ok(bulkZip.file(bulkRoot+row.reference_file));
+}
+
+const metadataOnly={...main,file:undefined};
+const unavailable=[slide(0,metadataOnly,ref)];
+assert.equal(readiness(unavailable,set,null)[0].ready,false);
+await assert.rejects(()=>makeSlideZip(unavailable[0],0,unavailable,set,null),/no longer available in this browser session/);
+await assert.rejects(()=>makeSlideZip({...slide(0),reference:null},0,[{...slide(0),reference:null}],set,null),/Assign a main asset and design reference/);
+
+const parsed=parseStorySets('SET 1 — परीक्षण\n\nSlide 1 — यह बिल्कुल वैसा ही रहे।\n(CTA: देखें।)\n\nSlide 2 — Tina talking video\nDirection: No text overlay but caption CC');
+assert.equal(parsed.sets.length,1);
+assert.equal(parsed.sets[0].slides.length,2);
+assert.equal(parsed.sets[0].slides[0].overlay_text,'यह बिल्कुल वैसा ही रहे।');
+assert.equal(parsed.sets[0].slides[0].cta,'देखें।');
+assert.equal(parsed.sets[0].slides[1].no_text_overlay,true);
+assert.equal(parsed.sets[0].slides[1].caption_cc,true);
+
+console.log('JSZip integrity, binary attachment, parser and JSON tests passed');
