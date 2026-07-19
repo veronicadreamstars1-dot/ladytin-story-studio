@@ -56,6 +56,12 @@ function patchSharedAccessChrome(){
   document.querySelectorAll('.badge.role').forEach(el=>{el.textContent='shared editor';el.className='badge ok'});
 }
 function patchDom(){patchAuthScreen();patchSharedAccessChrome()}
+async function requestAccess(password){
+  const response=await fetch('/api/app-access',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok||data?.error)throw new Error(data?.error||'Incorrect password.');
+  return data;
+}
 async function submitPassword(){
   const input=passwordInput();
   const password=input?.value||'';
@@ -63,13 +69,13 @@ async function submitPassword(){
   if(busy)return;
   busy=true;patchAuthScreen();showError('');
   try{
-    const {data,error}=await supabase.functions.invoke('app-access',{body:{password}});
-    if(error||data?.error)throw new Error(data?.error||error?.message||'Incorrect password.');
+    const data=await requestAccess(password);
     if(!data?.session?.access_token||!data?.session?.refresh_token)throw new Error('The access session could not be created.');
     await supabase.auth.setSession({access_token:data.session.access_token,refresh_token:data.session.refresh_token});
     if(input)input.value='';
   }catch(error){
-    showError(error.message.includes('locked')?error.message:'Incorrect password.');
+    const message=String(error?.message||'Incorrect password.');
+    showError(message.includes('locked')||message.includes('configured')?message:'Incorrect password.');
   }finally{
     busy=false;patchAuthScreen();
   }
