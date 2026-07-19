@@ -1,8 +1,13 @@
 -- Applied to the live project as migration
 -- 20260719190000_invite_acceptance_and_pin_upsert_support (via MCP apply_migration).
 
--- Unique pair used by snapshot import and Pinterest sync upserts.
-create unique index if not exists pinterest_pins_project_pin_key on public.pinterest_pins(project_id,pinterest_pin_id);
+-- Snapshot import and Pinterest sync upserts rely on the existing unique
+-- constraint pinterest_pins_project_id_pinterest_pin_id_key.
+-- Covering indexes for the foreign keys these features query.
+create index if not exists assets_story_set_id_idx on public.assets(story_set_id);
+create index if not exists slides_main_asset_id_idx on public.slides(main_asset_id);
+create index if not exists slides_reference_asset_id_idx on public.slides(reference_asset_id);
+create index if not exists project_invites_project_id_idx on public.project_invites(project_id);
 
 -- Secure invitation acceptance. Runs as definer because the invited user cannot
 -- read project_invites (owner-only RLS) and cannot insert into project_members.

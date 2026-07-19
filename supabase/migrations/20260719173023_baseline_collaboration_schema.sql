@@ -203,7 +203,8 @@ create table if not exists public.pinterest_pins(
   visual_tags jsonb not null default '{}'::jsonb,
   design_analysis jsonb not null default '{}'::jsonb,
   analysis_hash text not null,
-  raw_metadata jsonb not null default '{}'::jsonb
+  raw_metadata jsonb not null default '{}'::jsonb,
+  unique(project_id,pinterest_pin_id)
 );
 comment on table public.pinterest_pins is 'Cached Pinterest reference metadata for LadyTin Story Studio';
 

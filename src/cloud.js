@@ -30,8 +30,13 @@ export async function myRole(projectId,userId){
   return data?.role||null;
 }
 export async function createProject(title,user){
-  const{data,error}=await supabase.from('projects').insert({title:title||'Untitled Project',owner_id:user.id}).select().single();
+  // No RETURNING here: the owner-membership trigger fires after RETURNING is
+  // evaluated, so the read-back must be a separate request.
+  const id=crypto.randomUUID();
+  const{error}=await supabase.from('projects').insert({id,title:title||'Untitled Project',owner_id:user.id});
   if(error)fail(error,'Could not create the project.');
+  const{data,error:readError}=await supabase.from('projects').select('*').eq('id',id).single();
+  if(readError)fail(readError,'Could not load the created project.');
   record('projects',data);
   if(user.email)await supabase.from('project_members').update({invited_email:user.email}).eq('project_id',data.id).eq('user_id',user.id);
   return rowToProject(data);

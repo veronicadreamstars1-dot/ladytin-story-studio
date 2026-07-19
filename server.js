@@ -1,9 +1,10 @@
 import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
-import {extname, join} from 'node:path';
+import {dirname, extname, join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 const types = {'.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.otf': 'font/otf', '.json': 'application/json'};
-const root = join(process.cwd(), 'dist');
+const root = join(dirname(fileURLToPath(import.meta.url)), 'dist');
 
 createServer(async (req, res) => {
   const clean = req.url.split('?')[0];

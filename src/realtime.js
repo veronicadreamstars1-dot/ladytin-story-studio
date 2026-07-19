@@ -20,7 +20,7 @@ export function subscribeToProject(projectId,storySetIds,onEvent){
     .on('postgres_changes',{event:'*',schema:'public',table:'project_members',filter:`project_id=eq.${projectId}`},forward('project_members'))
     .on('postgres_changes',{event:'*',schema:'public',table:'pinterest_pins',filter:`project_id=eq.${projectId}`},forward('pinterest_pins'));
   if(storySetIds.length)ch=ch.on('postgres_changes',{event:'*',schema:'public',table:'slides',filter:`story_set_id=in.(${storySetIds.join(',')})`},forward('slides'));
-  dataChannel=ch.subscribe();
+  dataChannel=ch.subscribe(status=>{if(status==='CHANNEL_ERROR'||status==='TIMED_OUT')console.warn('Realtime data channel status:',status)});
   return dataChannel;
 }
 export function unsubscribeData(){if(dataChannel){supabase.removeChannel(dataChannel);dataChannel=null}}
@@ -36,6 +36,7 @@ export function joinPresence(projectId,me,onSync){
   });
   presenceChannel.subscribe(async status=>{
     if(status==='SUBSCRIBED')await presenceChannel.track({...lastPresence,last_active:new Date().toISOString()});
+    else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT')console.warn('Presence channel status:',status);
   });
   return presenceChannel;
 }
