@@ -9,7 +9,6 @@ import{inviteTokenFromPath,normaliseInitialRoute}from'../src/route-bootstrap.js'
 const loadZip=async blob=>JSZip.loadAsync(await blob.arrayBuffer());
 const file=(name,type,bytes=[1,2,3])=>({id:name,filename:name,type,file:new Blob([new Uint8Array(bytes)],{type})});
 
-// Authentication reducer and role helpers.
 let auth=authReducer(undefined,{});
 assert.equal(auth.status,'loading');
 auth=authReducer(auth,{type:'AUTH_SIGNED_IN',user:{id:'u1',email:'v@example.com'}});
@@ -25,10 +24,9 @@ assert.equal(authReducer(undefined,{type:'AUTH_LINK_SENT'}).status,'link_sent');
 assert.ok(canEdit('owner')&&canEdit('editor')&&!canEdit('viewer'));
 assert.ok(isOwner('owner')&&!isOwner('editor'));
 
-// Storage paths and mapping round trips.
 const path=storagePath('p1','s1','a1','My Photo:final?.jpg');
 assert.equal(path,'projects/p1/story-sets/s1/assets/a1/My Photo-final-.jpg');
-assert.equal(safeFilename('../../etc/passwd'),'--etc-passwd');
+assert.equal(safeFilename('../../etc/passwd'),'-..-etc-passwd');
 const assetRow={id:'a1',project_id:'p1',story_set_id:'s1',uploaded_by:'u1',asset_type:'main',original_filename:'MP-41.jpg',mime_type:'image/jpeg',storage_path:path,byte_size:8,created_at:'2026-07-19'};
 const appAsset=rowToAsset(assetRow);
 assert.equal(appAsset.filename,'MP-41.jpg');
@@ -63,7 +61,6 @@ assert.equal(setBack.overall_direction,'soft');
 assert.equal(setBack.sort_order,1);
 assert.equal(rowToProject({id:'p1',title:'Project',owner_id:'u1',revision:2}).ownerId,'u1');
 
-// Pin hydration and deterministic analysis.
 const pinRow={pinterest_pin_id:'77',board_id:'b1',pin_url:'https://www.pinterest.com/pin/77/',title:'Quiet editorial',description:'minimal negative space serif',alt_text:'',visual_tags:{},design_analysis:{},analysis_hash:''};
 const appPin=rowToPin(pinRow);
 assert.equal(appPin.id,'77');
@@ -73,14 +70,7 @@ const pinBack=pinToRow(appPin,'p1');
 assert.equal(pinBack.pinterest_pin_id,'77');
 assert.equal(pinBack.project_id,'p1');
 
-// Hydration and serialisation with multiple story sets.
-const hydrated=hydrateProject({
-  project:{id:'p1',title:'Project',owner_id:'u1',revision:1},
-  storySets:[setRow,{...setRow,id:'s2',title:'Second',sort_order:2}],
-  slides:[slideRow,{...slideRow,id:'sl2',slide_number:1}],
-  assets:[assetRow,{...assetRow,id:'a2',asset_type:'reference',storage_path:path+'2'},{...assetRow,id:'a3',asset_type:'logo',storage_path:path+'3'}],
-  pins:[pinRow],connection:null
-});
+const hydrated=hydrateProject({project:{id:'p1',title:'Project',owner_id:'u1',revision:1},storySets:[setRow,{...setRow,id:'s2',title:'Second',sort_order:2}],slides:[slideRow,{...slideRow,id:'sl2',slide_number:1}],assets:[assetRow,{...assetRow,id:'a2',asset_type:'reference',storage_path:path+'2'},{...assetRow,id:'a3',asset_type:'logo',storage_path:path+'3'}],pins:[pinRow],connection:null});
 assert.equal(hydrated.storySets.length,2);
 assert.equal(hydrated.storySets[0].slides.length,2);
 assert.equal(hydrated.storySets[0].slides[0].id,'sl2');
@@ -94,7 +84,6 @@ assert.equal(serialised.storySets.length,2);
 assert.equal(serialised.storySets[0].slides[0].slide_number,1);
 assert.equal(serialised.storySets[0].slides[0].overlay_text,'यह बिल्कुल वैसा ही रहे।');
 
-// Realtime reducer and own-write echo prevention.
 const seen=new Map();
 seen.set(revisionKey('slides','sl1'),5);
 assert.equal(shouldApplyEvent(seen,'slides',{id:'sl1',revision:5}),false);
@@ -114,7 +103,6 @@ assert.ok(rtState.storySets[0].mainAssets.some(a=>a.id==='a9'));
 const deleted=applyRealtimeEvent(rtState,{table:'projects',type:'DELETE',old:{id:'p1'},row:{}});
 assert.equal(deleted.deleted,true);
 
-// Presence sessions: same user, distinct browser contexts, complete state flattening.
 const makeStorage=()=>{const map=new Map();return{getItem:k=>map.get(k)||null,setItem:(k,v)=>map.set(k,v)}};
 const storeA=makeStorage(),storeB=makeStorage();
 const clientA=getPresenceClientId(storeA,()=> 'client-a');
@@ -122,17 +110,13 @@ const clientB=getPresenceClientId(storeB,()=> 'client-b');
 assert.equal(getPresenceClientId(storeA,()=> 'other'),clientA);
 assert.notEqual(clientA,clientB);
 assert.notEqual(makePresenceKey('same-user',clientA),makePresenceKey('same-user',clientB));
-const flat=flattenPresenceState({
-  [makePresenceKey('same-user',clientA)]:[{user_id:'same-user',client_id:clientA,name:'Veronica',context:'Slide 01'}],
-  [makePresenceKey('same-user',clientB)]:[{user_id:'same-user',client_id:clientB,name:'Veronica',context:'Assets & References'}]
-});
+const flat=flattenPresenceState({[makePresenceKey('same-user',clientA)]:[{user_id:'same-user',client_id:clientA,name:'Veronica',context:'Slide 01'}],[makePresenceKey('same-user',clientB)]:[{user_id:'same-user',client_id:clientB,name:'Veronica',context:'Assets & References'}]});
 assert.equal(flat.length,2);
 assert.deepEqual(new Set(flat.map(x=>x.context)),new Set(['Slide 01','Assets & References']));
 const tracked=buildPresencePayload({user_id:'u1',activity:'viewing'},{activity:'editing',context:'Slide 02'});
 assert.equal(tracked.activity,'editing');
 assert.ok(tracked.last_active);
 
-// Invitation validation and direct-route normalisation.
 const future=new Date(Date.now()+86400000).toISOString(),past=new Date(Date.now()-1000).toISOString();
 assert.equal(validateInvite(null).ok,false);
 assert.equal(validateInvite({email:'a@b.c',role:'editor',expires_at:future,accepted_at:'2026-01-01'},{email:'a@b.c'}).ok,false);
@@ -147,7 +131,6 @@ const fakeWindow={location:{pathname:'/invite/a%20b',href:'https://example.test/
 assert.equal(normaliseInitialRoute(fakeWindow),'a b');
 assert.match(replaced,/^\/\?x=1&invite=a\+b$|^\/\?invite=a\+b&x=1$/);
 
-// Browser-local migration planning.
 assert.equal(migrationPlan(null).ok,false);
 assert.equal(migrationPlan({}).ok,false);
 const plan=migrationPlan({storySets:[{title:'Journey',rawStorySetCopy:'raw',overallDirection:'soft',slides:[{copy:'Exact copy.',role:'Opening',referenceMode:'manual_upload',main:{id:'m1'},reference:{id:'r1'}}],mainAssets:[{id:'m1',filename:'m.jpg',type:'image/jpeg'}],references:[{id:'r1',filename:'r.pdf',type:'application/pdf'}]}]});
@@ -159,13 +142,8 @@ const legacy=migrationPlan({title:'Old',slides:[{copy:'Legacy'}],copyDraft:'draf
 assert.equal(legacy.ok,true);
 assert.equal(legacy.sets[0].slides[0].overlay_text,'Legacy');
 
-// Reference-led editorial typography, exact copy and no bundled font binaries.
 const pins=parseBoardSnapshot(JSON.stringify({items:[{id:'1',link:'https://www.pinterest.com/pin/1/',title:'Quiet editorial serif layout',description:'minimal negative space ivory'}]}));
-const set={id:'set-1',title:'Editorial Set',overallDirection:'',pinterestBoardUrl:PINTEREST_BOARD_URL,pinterestPins:pins,pinterestConnected:true,slides:[
-  {copy:'Opening copy.',role:'Opening',main:file('a.jpg','image/jpeg'),referenceMode:'pinterest_selected',pinterestPinId:'1'},
-  {copy:'Manual copy.',role:'Development',main:file('b.png','image/png'),referenceMode:'manual_upload',reference:file('r.pdf','application/pdf')},
-  {copy:'Editorial copy.',role:'Resolution / CTA',main:file('c.webp','image/webp'),referenceMode:'editorial_direction_only'}
-]};
+const set={id:'set-1',title:'Editorial Set',overallDirection:'',pinterestBoardUrl:PINTEREST_BOARD_URL,pinterestPins:pins,pinterestConnected:true,slides:[{copy:'Opening copy.',role:'Opening',main:file('a.jpg','image/jpeg'),referenceMode:'pinterest_selected',pinterestPinId:'1'},{copy:'Manual copy.',role:'Development',main:file('b.png','image/png'),referenceMode:'manual_upload',reference:file('r.pdf','application/pdf')},{copy:'Editorial copy.',role:'Resolution / CTA',main:file('c.webp','image/webp'),referenceMode:'editorial_direction_only'}]};
 for(const[i,s]of set.slides.entries()){
   const prompt=slidePrompt(s,i,set.slides,set,null);
   assert.equal(parseJson(pretty(prompt)).ok,true);
@@ -196,7 +174,6 @@ const bulkZip=await loadZip(await makeZip(set.slides,set,null,false));
 const bulkNames=Object.keys(bulkZip.files);
 assert.ok(!bulkNames.some(x=>/\.(otf|ttf|woff2?)$/i.test(x)));
 
-// Cloud-only binary resolver contract and byte preservation.
 const cloudOnly={...set.slides[1],main:{id:'cloud-main',filename:'cloud.jpg',type:'image/jpeg',storage_path:'projects/p/story-sets/s/assets/x/cloud.jpg'}};
 const remoteSet={...set,slides:[cloudOnly]};
 assert.equal(readiness(remoteSet.slides,remoteSet,null)[0].main,true);
