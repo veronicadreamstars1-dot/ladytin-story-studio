@@ -1,16 +1,16 @@
 {
   "scripts": {
     "dev": "node server.js",
-    "build": "npm run test && rm -rf dist && mkdir -p dist/src && cp index.html dist/ && cp src/styles.css dist/src/ && esbuild src/app.js --bundle --format=esm --platform=browser --target=es2020 --outfile=dist/src/app.js && esbuild src/zip-ui.js --bundle --format=esm --platform=browser --target=es2020 --outfile=dist/src/zip-ui.js",
-    "lint": "node --check src/app.js && node --check src/parser.js && node --check src/prompting.js && node --check src/zip-ui.js",
-    "typecheck": "node --check src/app.js && node --check src/parser.js && node --check src/prompting.js && node --check src/zip-ui.js",
-    "test": "node tests/run-tests.js"
+    "build": "npm run test && rm -rf dist && mkdir -p dist/src && cp index.html dist/ && cp src/styles.css src/pinterest.css dist/src/ && esbuild src/app.js --bundle --format=esm --platform=browser --target=es2020 --outfile=dist/src/app.js && esbuild src/zip-ui.js --bundle --format=esm --platform=browser --target=es2020 --outfile=dist/src/zip-ui.js",
+    "lint": "node --check src/app.js && node --check src/parser.js && node --check src/prompting.js && node --check src/pinterest.js && node --check src/zip-ui.js",
+    "typecheck": "node --check src/app.js && node --check src/parser.js && node --check src/prompting.js && node --check src/pinterest.js && node --check src/zip-ui.js",
+    "test": "node tests/run-tests.js && node tests/pinterest-tests.js"
   },
   "dependencies": {
-    "jszip": "^3.10.1"
+    "jszip": "3.10.1"
   },
   "devDependencies": {
-    "esbuild": "^0.25.6"
+    "esbuild": "0.25.6"
   },
   "type": "module"
 }
