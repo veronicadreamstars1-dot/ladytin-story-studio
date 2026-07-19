@@ -1,7 +1,8 @@
 {
   "outputDirectory": "dist",
+  "cleanUrls": true,
   "rewrites": [
-    {"source": "/project/:path*", "destination": "/index.html"},
-    {"source": "/invite/:path*", "destination": "/index.html"}
+    {"source": "/project/:path*", "destination": "/"},
+    {"source": "/invite/:path*", "destination": "/"}
   ]
 }
