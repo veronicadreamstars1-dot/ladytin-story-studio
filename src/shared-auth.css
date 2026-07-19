@@ -1,0 +1,8 @@
+html[data-shared-auth="locked"] body{overflow:hidden}
+.shared-auth-shell{background:var(--bg)}
+.shared-auth-card{max-width:360px;padding:28px}
+.shared-auth-card h1{margin-bottom:22px}
+.shared-password-field{margin-bottom:12px}
+.shared-password-field input{height:44px}
+.shared-enter{width:100%;height:40px}
+.shared-auth-error{min-height:18px;margin:12px 0 0!important;color:var(--bad)!important}
