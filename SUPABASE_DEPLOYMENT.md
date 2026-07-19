@@ -2,6 +2,8 @@
 
 Project: `ladytin-story-studio` — ref `exmvsczxgippzcbjdrrj`
 
+Authentication surface: one shared password field and one Enter button only.
+
 ## Browser-safe configuration
 
 The build injects only:
