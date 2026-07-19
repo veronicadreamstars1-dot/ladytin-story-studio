@@ -4,44 +4,29 @@ const ERROR_ID='passwordAccessError';
 const NAME_KEY='ladytin-collaborator-name';
 let busy=false;
 
-function cleanText(node,text){if(node)node.textContent=text}
 function authCard(){return document.querySelector('.auth-card')}
-function passwordInput(){return document.querySelector('#authEmail')}
-function enterButton(){return document.querySelector('#sendLink')}
+function passwordInput(){return document.querySelector('#appAccessPassword')}
 function showError(message=''){
-  const card=authCard();
-  if(!card)return;
-  let el=document.getElementById(ERROR_ID);
-  if(!el){el=document.createElement('p');el.id=ERROR_ID;el.className='auth-note';el.style.color='var(--bad)';card.appendChild(el)}
-  el.textContent=message;
+  const el=document.getElementById(ERROR_ID);
+  if(el)el.textContent=message;
+}
+function renderPasswordCard(card){
+  if(!card||card.dataset.passwordOnly==='true')return;
+  card.dataset.passwordOnly='true';
+  card.innerHTML=`<h1>LadyTin Story Studio</h1><p>Enter the shared access password.</p><label class="field"><span>Password</span><input id="appAccessPassword" type="password" autocomplete="current-password" aria-label="Password"></label><div class="action-row"><button class="btn primary" id="appAccessEnter">${busy?'Checking…':'Enter'}</button></div><p id="${ERROR_ID}" class="auth-note" style="color:var(--bad)"></p>`;
 }
 function patchAuthScreen(){
   const card=authCard();
   if(!card)return;
-  const title=card.querySelector('h1');
-  cleanText(title,'LadyTin Story Studio');
-  const firstP=card.querySelector('p');
-  cleanText(firstP,'Enter the shared access password.');
-  [...card.querySelectorAll('p')].forEach((p,i)=>{if(i>0&&p.id!==ERROR_ID&&!p.classList.contains('viewer-note'))p.remove()});
-  const label=card.querySelector('.field > span');
-  cleanText(label,'Password');
-  const input=passwordInput();
-  if(input){
-    input.type='password';
-    input.autocomplete='current-password';
-    input.placeholder='';
-    input.inputMode='text';
-    input.removeAttribute('value');
-    input.setAttribute('aria-label','Password');
-  }
-  const button=enterButton();
+  renderPasswordCard(card);
+  const button=document.querySelector('#appAccessEnter');
   if(button)button.textContent=busy?'Checking…':'Enter';
 }
 function patchSharedAccessChrome(){
   const projects=document.querySelector('.projects-page');
   if(projects){
     const p=projects.querySelector('.panel-head p');
-    cleanText(p,'Shared password access');
+    if(p)p.textContent='Shared password access';
     if(!document.getElementById('presenceName')){
       const box=document.createElement('div');
       box.className='migrate-box';
@@ -82,13 +67,13 @@ async function submitPassword(){
 }
 
 document.addEventListener('click',event=>{
-  if(event.target?.id==='sendLink'){
+  if(event.target?.id==='appAccessEnter'){
     event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
     submitPassword();
   }
 },true);
 document.addEventListener('keydown',event=>{
-  if(event.target?.id==='authEmail'&&event.key==='Enter'){
+  if(event.target?.id==='appAccessPassword'&&event.key==='Enter'){
     event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
     submitPassword();
   }
