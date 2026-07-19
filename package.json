@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "dev": "node server.js",
+    "build": "node tests/run-tests.js && mkdir -p dist && cp index.html src/*.js src/styles.css dist/",
+    "lint": "node --check src/app.js && node --check src/prompting.js",
+    "test": "node tests/run-tests.js"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "type": "module"
+}
