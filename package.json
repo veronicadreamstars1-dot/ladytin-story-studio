@@ -1,9 +1,9 @@
 {
   "scripts": {
     "dev": "node server.js",
-    "build": "npm run test && rm -rf dist && mkdir -p dist/src && cp index.html dist/ && cp src/styles.css dist/src/ && esbuild src/app.js --bundle --format=esm --platform=browser --target=es2020 --outfile=dist/src/app.js",
-    "lint": "node --check src/app.js && node --check src/parser.js && node --check src/prompting.js",
-    "typecheck": "node --check src/app.js && node --check src/parser.js && node --check src/prompting.js",
+    "build": "npm run test && rm -rf dist && mkdir -p dist/src && cp index.html dist/ && cp src/styles.css dist/src/ && esbuild src/app.js --bundle --format=esm --platform=browser --target=es2020 --outfile=dist/src/app.js && esbuild src/zip-ui.js --bundle --format=esm --platform=browser --target=es2020 --outfile=dist/src/zip-ui.js",
+    "lint": "node --check src/app.js && node --check src/parser.js && node --check src/prompting.js && node --check src/zip-ui.js",
+    "typecheck": "node --check src/app.js && node --check src/parser.js && node --check src/prompting.js && node --check src/zip-ui.js",
     "test": "node tests/run-tests.js"
   },
   "dependencies": {
