@@ -2,6 +2,7 @@
 import{supabase}from'./supabase.js';
 import{seenRevisions}from'./cloud.js';
 import{shouldApplyEvent}from'./db.js';
+import{buildPresencePayload,flattenPresenceState,getPresenceClientId,makePresenceKey}from'./presence.js';
 
 let dataChannel=null,presenceChannel=null;
 
@@ -25,25 +26,54 @@ export function subscribeToProject(projectId,storySetIds,onEvent){
 }
 export function unsubscribeData(){if(dataChannel){supabase.removeChannel(dataChannel);dataChannel=null}}
 
-let lastPresence={};
+const clientId=getPresenceClientId();
+let lastPresence={},presenceSubscribed=false,presenceSync=null;
+
+async function trackPresence(){
+  if(!presenceChannel||!presenceSubscribed)return;
+  try{await presenceChannel.track(buildPresencePayload(lastPresence))}
+  catch(error){console.warn('Presence track failed:',error)}
+}
+
 export function joinPresence(projectId,me,onSync){
   leavePresence();
-  lastPresence={...me};
-  presenceChannel=supabase.channel(`project-presence:${projectId}`,{config:{presence:{key:me.user_id}}});
+  lastPresence={...me,client_id:clientId};
+  presenceSync=onSync;
+  presenceChannel=supabase.channel(`project-presence:${projectId}`,{config:{presence:{key:makePresenceKey(me.user_id,clientId)}}});
   presenceChannel.on('presence',{event:'sync'},()=>{
-    const state=presenceChannel.presenceState();
-    onSync(Object.values(state).map(entries=>entries[0]).filter(Boolean));
+    const list=flattenPresenceState(presenceChannel?.presenceState?.()||{});
+    presenceSync?.(list);
   });
+  presenceChannel.on('presence',{event:'join'},()=>presenceSync?.(flattenPresenceState(presenceChannel?.presenceState?.()||{})));
+  presenceChannel.on('presence',{event:'leave'},()=>presenceSync?.(flattenPresenceState(presenceChannel?.presenceState?.()||{})));
   presenceChannel.subscribe(async status=>{
-    if(status==='SUBSCRIBED')await presenceChannel.track({...lastPresence,last_active:new Date().toISOString()});
-    else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT')console.warn('Presence channel status:',status);
+    if(status==='SUBSCRIBED'){
+      presenceSubscribed=true;
+      await trackPresence();
+    }else if(status==='CLOSED'){
+      presenceSubscribed=false;
+    }else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'){
+      presenceSubscribed=false;
+      console.warn('Presence channel status:',status);
+    }
   });
   return presenceChannel;
 }
+
 export async function updatePresence(patch){
-  if(!presenceChannel)return;
-  lastPresence={...lastPresence,...patch};
-  try{await presenceChannel.track({...lastPresence,last_active:new Date().toISOString()})}catch{}
+  lastPresence={...lastPresence,...patch,client_id:clientId};
+  await trackPresence();
 }
-export function leavePresence(){if(presenceChannel){supabase.removeChannel(presenceChannel);presenceChannel=null}}
+
+export function leavePresence(){
+  const channel=presenceChannel;
+  presenceChannel=null;
+  presenceSubscribed=false;
+  presenceSync=null;
+  lastPresence={};
+  if(channel){
+    try{void channel.untrack?.()}catch{}
+    supabase.removeChannel(channel);
+  }
+}
 export function unsubscribeAll(){unsubscribeData();leavePresence()}
