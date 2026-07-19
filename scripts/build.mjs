@@ -17,7 +17,7 @@ await copyFile('index.html', 'dist/index.html');
 await copyFile('src/styles.css', 'dist/src/styles.css');
 await copyFile('src/pinterest.css', 'dist/src/pinterest.css');
 
-for (const entry of ['src/route-bootstrap.js', 'src/app.js', 'src/zip-ui.js']) {
+for (const entry of ['src/route-bootstrap.js', 'src/auto-access.js', 'src/app.js', 'src/zip-ui.js']) {
   await build({
     entryPoints: [entry],
     bundle: true,
