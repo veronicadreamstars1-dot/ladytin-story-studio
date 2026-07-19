@@ -1,8 +1,9 @@
 import {build} from 'esbuild';
 import {mkdir, rm, copyFile} from 'node:fs/promises';
 
-// Browser-safe values only. Secrets (service role, Pinterest app secret, token keys)
-// must never be read here — they live exclusively in Supabase Edge Function secrets.
+// Browser-safe values only. Secrets (service role, Pinterest app secret, token keys,
+// password secrets) must never be read here — they live exclusively in server-side
+// Supabase Edge Function secrets.
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.PUBLIC_SUPABASE_URL || '';
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '';
 
@@ -17,7 +18,7 @@ await copyFile('index.html', 'dist/index.html');
 await copyFile('src/styles.css', 'dist/src/styles.css');
 await copyFile('src/pinterest.css', 'dist/src/pinterest.css');
 
-for (const entry of ['src/route-bootstrap.js', 'src/app.js', 'src/zip-ui.js']) {
+for (const entry of ['src/route-bootstrap.js', 'src/app.js', 'src/password-access.js', 'src/zip-ui.js']) {
   await build({
     entryPoints: [entry],
     bundle: true,
