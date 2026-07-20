@@ -22,7 +22,7 @@ export function subscribeToProject(projectId,storySetIds,onEvent){
     .on('postgres_changes',{event:'*',schema:'public',table:'story_sets',filter:`project_id=eq.${projectId}`},forward('story_sets'))
     .on('postgres_changes',{event:'*',schema:'public',table:'assets',filter:`project_id=eq.${projectId}`},forward('assets'))
     .on('postgres_changes',{event:'*',schema:'public',table:'project_members',filter:`project_id=eq.${projectId}`},forward('project_members'))
-    .on('postgres_changes',{event:'*',schema:'public',table:'pinterest_pins',filter:`project_id=eq.${projectId}`},forward('pinterest_pins'));
+    .on('postgres_changes',{event:'*',schema:'public',table:'library_items'},forward('library_items'));
   if(storySetIds.length)ch=ch.on('postgres_changes',{event:'*',schema:'public',table:'slides',filter:`story_set_id=in.(${storySetIds.join(',')})`},forward('slides'));
   dataChannel=ch;
   ch.subscribe(status=>{

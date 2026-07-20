@@ -9,7 +9,6 @@ await rm('dist',{recursive:true,force:true});
 await mkdir('dist/src',{recursive:true});
 await copyFile('index.html','dist/index.html');
 await copyFile('src/styles.css','dist/src/styles.css');
-await copyFile('src/pinterest.css','dist/src/pinterest.css');
 await copyFile('src/shared-auth.css','dist/src/shared-auth.css');
 await build({entryPoints:['src/main.js'],bundle:true,format:'esm',platform:'browser',target:'es2020',outfile:'dist/src/main.js',define,logLevel:'info'});
 

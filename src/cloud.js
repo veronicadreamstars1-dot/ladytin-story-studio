@@ -1,7 +1,8 @@
-// Network layer for the password-gated shared editor: cloud persistence, Storage and Pinterest.
+// Network layer for the password-gated shared editor: cloud persistence, Storage and shared libraries.
 // All mapping is delegated to db.js so it stays independently testable.
 import{supabase}from'./supabase.js';
-import{assetToRow,pinToRow,revisionKey,rowToAsset,rowToPin,rowToProject,rowToSlide,rowToStorySet,slideToRow,storySetToRow,hydrateProject,migrationPlan,LOCAL_KEY,MIGRATED_KEY,storagePath}from'./db.js';
+import{assetToRow,libraryItemToRow,revisionKey,rowToAsset,rowToLibraryItem,rowToProject,rowToSlide,rowToStorySet,slideToRow,storySetToRow,hydrateProject,migrationPlan,LOCAL_KEY,MIGRATED_KEY,storagePath}from'./db.js';
+import{safeFilename}from'./prompting.js';
 
 const BUCKET='project-files';
 export const seenRevisions=new Map();
@@ -36,16 +37,16 @@ export async function deleteProject(projectId){
   if(error)fail(error,'Could not delete the project.');
 }
 export async function loadProject(projectId){
-  const[p,sets,assets,pins]=await Promise.all([
+  const[p,sets,assets,libraryItems]=await Promise.all([
     supabase.from('projects').select('*').eq('id',projectId).single(),
     supabase.from('story_sets').select('*').eq('project_id',projectId).order('sort_order'),
     supabase.from('assets').select('*').eq('project_id',projectId),
-    supabase.from('pinterest_pins').select('*').eq('project_id',projectId),
+    supabase.from('library_items').select('*').order('updated_at',{ascending:false}).limit(500),
   ]);
   if(p.error)fail(p.error,'Could not open this project.');
   if(sets.error)fail(sets.error,'Could not load story sets.');
   if(assets.error)fail(assets.error,'Could not load project assets.');
-  if(pins.error)fail(pins.error,'Could not load Pinterest references.');
+  if(libraryItems.error)fail(libraryItems.error,'Could not load shared libraries.');
   const setIds=(sets.data||[]).map(set=>set.id);
   let slides=[];
   if(setIds.length){
@@ -54,7 +55,7 @@ export async function loadProject(projectId){
     slides=result.data||[];
   }
   [p.data,...(sets.data||[]),...slides].forEach(row=>record(row.owner_id!==undefined?'projects':row.project_id!==undefined?'story_sets':'slides',row));
-  return hydrateProject({project:p.data,storySets:sets.data||[],slides,assets:assets.data||[],pins:pins.data||[],connection:null});
+  return hydrateProject({project:p.data,storySets:sets.data||[],slides,assets:assets.data||[],libraryItems:libraryItems.data||[]});
 }
 
 // ---------- story sets ----------
@@ -124,6 +125,41 @@ export async function uploadAsset({projectId,storySetId,file,assetType,userId}){
   if(error){await supabase.storage.from(BUCKET).remove([path]);fail(error,`Could not register "${file.name}".`)}
   return{...rowToAsset(data),file};
 }
+
+export async function uploadLibraryItem({file,libraryType,userId,metadata={}}){
+  const itemId=crypto.randomUUID();
+  const path=`library/${libraryType}/${itemId}/${safeFilename(file.name,'file')}`;
+  const{error:uploadError}=await supabase.storage.from(BUCKET).upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false});
+  if(uploadError)fail(uploadError,`Could not upload "${file.name}" to the shared library.`);
+  const row=libraryItemToRow({id:itemId,library_type:libraryType,filename:file.name,type:file.type||'application/octet-stream',size:file.size||0,storage_path:path,source_type:'supabase_storage',media_category:metadata.media_category||'',title:metadata.title||file.name,description:metadata.description||'',visual_tags:metadata.visual_tags||{}},{uploadedBy:userId});
+  const{data,error}=await supabase.from('library_items').insert(row).select().single();
+  if(error){await supabase.storage.from(BUCKET).remove([path]);fail(error,`Could not register "${file.name}" in the shared library.`)}
+  return{...rowToLibraryItem(data),file};
+}
+
+export async function archiveLibraryItem(itemId){
+  const{data,error}=await supabase.rpc('archive_library_item',{target_item_id:itemId}).single();
+  if(error)fail(error,'Could not archive this library item.');
+  return rowToLibraryItem(data);
+}
+
+export async function restoreLibraryItem(itemId){
+  const{data,error}=await supabase.rpc('restore_library_item',{target_item_id:itemId}).single();
+  if(error)fail(error,'Could not restore this library item.');
+  return rowToLibraryItem(data);
+}
+
+export async function deleteUnusedLibraryItem(itemId){
+  const{data,error}=await supabase.rpc('delete_unused_library_item',{target_item_id:itemId});
+  if(error)fail(error,'Could not delete this library item.');
+  return data;
+}
+
+export async function getLibraryItemUsage(itemId){
+  const{data,error}=await supabase.rpc('get_library_item_usage',{target_item_id:itemId});
+  if(error)fail(error,'Could not load library item usage.');
+  return data||[];
+}
 export async function deleteAsset(asset){
   if(asset.storage_path)await supabase.storage.from(BUCKET).remove([asset.storage_path]);
   const{error}=await supabase.from('assets').delete().eq('id',asset.id);
@@ -146,20 +182,6 @@ export async function resolveAssetBinary(asset){
   const bytes=await data.arrayBuffer();
   if(!bytes.byteLength)throw new Error(`Downloaded file "${asset.filename||'unknown file'}" is empty.`);
   return bytes;
-}
-
-// ---------- Pinterest ----------
-export async function upsertPins(projectId,pins){
-  if(!pins.length)return[];
-  const{data,error}=await supabase.from('pinterest_pins').upsert(pins.map(pin=>pinToRow(pin,projectId)),{onConflict:'project_id,pinterest_pin_id'}).select();
-  if(error)fail(error,'Could not store the imported Pins.');
-  return(data||[]).map(row=>rowToPin(row));
-}
-export async function pinterestAction(action,payload={}){
-  const{data,error}=await supabase.functions.invoke('pinterest',{body:{action,...payload}});
-  if(error)throw new Error(data?.error||error.message||'Pinterest request failed.');
-  if(data?.error)throw new Error(data.error);
-  return data;
 }
 
 // ---------- browser project migration ----------
@@ -189,9 +211,7 @@ export async function migrateLocalProject(user,localState,inMemorySets){
           idMap[meta.id]=uploaded.id;
         }
       }
-      await insertSlides(set.id,setPlan.slides.map(slide=>({...slide,slide_number:slide.slide_number,overlay_text:slide.overlay_text,copy:slide.overlay_text,cta:slide.cta,interaction:slide.interaction,direction:slide.direction,art:slide.direction,content_description:slide.content_description,internal_note:slide.internal_note,no_text_overlay:slide.no_text_overlay,caption_cc:slide.caption_cc,role:slide.role,referenceMode:slide.reference_mode,pinterestPinId:slide.pinterest_pin_id||'',pinterestMatchScore:slide.pinterest_match_score,pinterestMatchReason:slide.pinterest_match_reason,referenceLocked:slide.reference_locked,assetId:idMap[slide.localMainId]||null,referenceId:idMap[slide.localReferenceId]||null,main:null,reference:null})));
-      const livePins=live?.pinterestPins||[];
-      if(livePins.length)await upsertPins(project.id,livePins);
+      await insertSlides(set.id,setPlan.slides.map(slide=>({...slide,slide_number:slide.slide_number,overlay_text:slide.overlay_text,copy:slide.overlay_text,cta:slide.cta,interaction:slide.interaction,direction:slide.direction,art:slide.direction,content_description:slide.content_description,internal_note:slide.internal_note,no_text_overlay:slide.no_text_overlay,caption_cc:slide.caption_cc,role:slide.role,referenceMode:slide.reference_mode,referenceMatchScore:slide.reference_match_score,referenceMatchReason:slide.reference_match_reason,referenceLocked:slide.reference_locked,assetId:idMap[slide.localMainId]||null,referenceId:idMap[slide.localReferenceId]||null,main:null,reference:null})));
     }
   }catch(error){
     return{ok:false,reason:`Migration stopped before completing: ${error.message}. Nothing was marked as migrated — retrying is safe.`,projectId:project.id};

@@ -1,7 +1,7 @@
 // Pure mapping layer between Supabase rows and the in-app project shape.
 // No network calls here — everything is separately testable.
 import{makeSlide}from'./parser.js';
-import{PINTEREST_BOARD_URL,REFERENCE_MODES,designAnalysis,inferVisualTags}from'./pinterest.js';
+import{REFERENCE_MODES,designAnalysis,inferVisualTags}from'./library.js';
 import{safeFilename}from'./prompting.js';
 
 export const ROLES=['owner','editor','viewer'];
@@ -31,6 +31,18 @@ export function rowToAsset(row){
   if(!row)return null;
   return{id:row.id,filename:row.original_filename||'',type:row.mime_type||'application/octet-stream',size:Number(row.byte_size)||0,storage_path:row.storage_path||'',asset_type:row.asset_type||'main',story_set_id:row.story_set_id||null,uploaded_by:row.uploaded_by||null,created_at:row.created_at||''};
 }
+
+export function rowToLibraryItem(row){
+  if(!row)return null;
+  const item={id:row.id,library_type:row.library_type,filename:row.original_filename||'',title:row.title||row.original_filename||'',description:row.description||'',type:row.mime_type||'application/octet-stream',size:Number(row.byte_size)||0,source_type:row.source_type||'supabase_storage',source_location:row.source_type||'supabase_storage',storage_path:row.storage_path||'',thumbnail_path:row.thumbnail_path||'',google_drive_file_id:row.google_drive_file_id||'',google_drive_parent_id:row.google_drive_parent_id||'',google_drive_web_view_link:row.google_drive_web_view_link||'',google_drive_modified_at:row.google_drive_modified_at||'',media_category:row.media_category||'',dominant_colours:row.dominant_colours||[],visual_tags:row.visual_tags||{},tags:row.tags||[],collections:row.collections||[],usage_count:Number(row.usage_count)||0,last_used_at:row.last_used_at||'',archived_at:row.archived_at||'',created_at:row.created_at||'',updated_at:row.updated_at||'',revision:Number(row.revision)||1};
+  if(!Object.values(item.visual_tags||{}).flat().length)item.visual_tags=inferVisualTags(item);
+  item.design_analysis=row.design_analysis||designAnalysis(item,item.visual_tags);
+  return item;
+}
+
+export function libraryItemToRow(item,{uploadedBy}={}){
+  return{id:item.id,library_type:item.library_type,created_by:uploadedBy||item.created_by||null,title:item.title||item.filename||'Untitled item',description:item.description||'',original_filename:item.filename||item.original_filename||'file',mime_type:item.type||item.mime_type||'application/octet-stream',byte_size:item.size||item.byte_size||0,source_type:item.source_type||'supabase_storage',google_drive_file_id:item.google_drive_file_id||null,google_drive_parent_id:item.google_drive_parent_id||null,google_drive_web_view_link:item.google_drive_web_view_link||null,google_drive_modified_at:item.google_drive_modified_at||null,storage_path:item.storage_path||null,thumbnail_path:item.thumbnail_path||null,media_category:item.media_category||'',dominant_colours:item.dominant_colours||[],visual_tags:item.visual_tags||{},search_text:[item.title,item.description,item.filename,item.media_category,(item.tags||[]).join(' ')].filter(Boolean).join(' ')};
+}
 export function assetToRow(asset,{projectId,storySetId,uploadedBy}){
   return{id:asset.id,project_id:projectId,story_set_id:storySetId||null,uploaded_by:uploadedBy,asset_type:asset.asset_type||'main',original_filename:asset.filename||'file',mime_type:asset.type||'application/octet-stream',storage_path:asset.storage_path,byte_size:asset.size||0};
 }
@@ -43,22 +55,26 @@ export function rowToSlide(row,assetsById={}){
     direction:row.direction||'',art:row.direction||'',content_description:row.content_description||'',
     internal_note:row.internal_note||'',no_text_overlay:!!row.no_text_overlay,caption_cc:!!row.caption_cc,
     role:row.role||'Development',
-    main:assetsById[row.main_asset_id]||null,reference:assetsById[row.reference_asset_id]||null,
-    assetId:row.main_asset_id||'',referenceId:row.reference_asset_id||'',
+    main:assetsById[row.main_library_item_id]||assetsById[row.main_asset_id]||null,reference:assetsById[row.reference_library_item_id]||assetsById[row.reference_asset_id]||null,
+    assetId:row.main_library_item_id||row.main_asset_id||'',referenceId:row.reference_library_item_id||row.reference_asset_id||'',
+    mainAssetSource:row.main_library_item_id?'library_media':'manual_upload',
     referenceMode:REFERENCE_MODES.includes(row.reference_mode)?row.reference_mode:'editorial_direction_only',
-    pinterestPinId:row.pinterest_pin_id||'',pinterestMatchScore:row.pinterest_match_score==null?null:Number(row.pinterest_match_score),
-    pinterestMatchReason:row.pinterest_match_reason||'',referenceLocked:!!row.reference_locked,
+    referenceMatchScore:row.reference_match_score==null?null:Number(row.reference_match_score),
+    referenceMatchReason:row.reference_match_reason||'',referenceLocked:!!row.reference_locked,
     revision:Number(row.revision)||1,updated_at:row.updated_at||'',updated_by:row.updated_by||null};
 }
 export function slideToRow(slide,storySetId){
+  const mainIsLibrary=slide.mainAssetSource==='library_media'||slide.main?.library_type==='media';
+  const referenceIsLibrary=slide.referenceMode==='library_reference'||slide.reference?.library_type==='reference';
   return{story_set_id:storySetId||slide.storySetId,slide_number:slide.slide_number||1,role:slide.role||'Development',
     overlay_text:slide.overlay_text??slide.copy??'',cta:slide.cta||'',interaction:slide.interaction||'',
     direction:slide.direction??slide.art??'',content_description:slide.content_description||'',
     internal_note:slide.internal_note||'',no_text_overlay:!!slide.no_text_overlay,caption_cc:!!slide.caption_cc,
-    main_asset_id:slide.main?.id||slide.assetId||null,reference_asset_id:slide.reference?.id||slide.referenceId||null,
+    main_asset_id:mainIsLibrary?null:(slide.main?.id||slide.assetId||null),reference_asset_id:referenceIsLibrary?null:(slide.reference?.id||slide.referenceId||null),
+    main_library_item_id:mainIsLibrary?(slide.main?.id||slide.assetId||null):null,reference_library_item_id:referenceIsLibrary?(slide.reference?.id||slide.referenceId||null):null,
     reference_mode:REFERENCE_MODES.includes(slide.referenceMode)?slide.referenceMode:'editorial_direction_only',
-    pinterest_pin_id:slide.pinterestPinId||null,pinterest_match_score:slide.pinterestMatchScore??null,
-    pinterest_match_reason:slide.pinterestMatchReason||'',reference_locked:!!slide.referenceLocked};
+    reference_match_score:slide.referenceMatchScore??null,
+    reference_match_reason:slide.referenceMatchReason||'',reference_locked:!!slide.referenceLocked};
 }
 
 // ---------- story sets ----------
@@ -68,8 +84,7 @@ export function rowToStorySet(row){
     parseWarnings:Array.isArray(row.parse_warnings)?row.parse_warnings:[],
     overallDirection:row.overall_direction||'',sortOrder:Number(row.sort_order)||0,
     revision:Number(row.revision)||1,updated_at:row.updated_at||'',
-    slides:[],mainAssets:[],references:[],logo:null,
-    pinterestBoardUrl:PINTEREST_BOARD_URL,pinterestPins:[],pinterestSyncedAt:'',pinterestConnected:false,pinterestSnapshotImported:false,referencePlan:null};
+    slides:[],mainAssets:[],references:[],logo:null,referencePlan:null};
 }
 export function storySetToRow(set,projectId){
   return{project_id:projectId||set.projectId,title:set.title||'Untitled Story Set',
@@ -83,42 +98,27 @@ export function rowToProject(row){
 }
 export function projectToRow(project){return{title:project.title||'Untitled Project'};}
 
-// ---------- pins ----------
-export function rowToPin(row,boardUrl=PINTEREST_BOARD_URL){
-  const pin={id:row.pinterest_pin_id,board_id:row.board_id||'',board_url:boardUrl,url:row.pin_url||'',
-    title:row.title||'',description:row.description||'',alt_text:row.alt_text||'',
-    dominant_colour:row.dominant_colour||'',thumbnail_url:row.thumbnail_url||'',source_domain:row.source_domain||'',
-    synced_at:row.synced_at||'',visual_tags:row.visual_tags||{},design_analysis:row.design_analysis||{},analysis_hash:row.analysis_hash||''};
-  // Pins synced server-side arrive without tags; the deterministic tagger fills them in.
-  if(!Object.values(pin.visual_tags||{}).flat().length){pin.visual_tags=inferVisualTags(pin);pin.design_analysis=designAnalysis(pin,pin.visual_tags)}
-  return pin;
-}
-export function pinToRow(pin,projectId){
-  return{project_id:projectId,pinterest_pin_id:pin.id,board_id:pin.board_id||null,pin_url:pin.url||'',
-    title:pin.title||'',description:pin.description||'',alt_text:pin.alt_text||'',dominant_colour:pin.dominant_colour||null,
-    thumbnail_url:pin.thumbnail_url||null,source_domain:pin.source_domain||null,synced_at:pin.synced_at||new Date().toISOString(),
-    visual_tags:pin.visual_tags||{},design_analysis:pin.design_analysis||{},analysis_hash:pin.analysis_hash||'',raw_metadata:{}};
-}
-
 // ---------- hydration ----------
-export function hydrateProject({project,storySets=[],slides=[],assets=[],pins=[],connection=null}){
-  const appAssets=assets.map(rowToAsset),assetsById=Object.fromEntries(appAssets.map(a=>[a.id,a]));
-  const boardUrl=connection?.board_url||PINTEREST_BOARD_URL;
-  const appPins=pins.map(r=>rowToPin(r,boardUrl));
+export function hydrateProject({project,storySets=[],slides=[],assets=[],libraryItems=[]}){
+  const appAssets=assets.map(rowToAsset);
+  const appLibraryItems=libraryItems.map(rowToLibraryItem);
+  const assetsById=Object.fromEntries([...appAssets,...appLibraryItems].map(a=>[a.id,a]));
+  const projectMainAssets=appAssets.filter(a=>a.asset_type==='main');
+  const projectReferences=appAssets.filter(a=>a.asset_type==='reference');
+  const projectLogo=appAssets.find(a=>a.asset_type==='logo')||null;
+  const sharedMainAssets=appLibraryItems.filter(a=>a.library_type==='media'&&!a.archived_at);
+  const sharedReferences=appLibraryItems.filter(a=>a.library_type==='reference'&&!a.archived_at);
+
   const sets=storySets.map(rowToStorySet).sort((a,b)=>a.sortOrder-b.sortOrder||a.title.localeCompare(b.title));
   for(const set of sets){
     set.slides=slides.filter(s=>s.story_set_id===set.id).map(r=>rowToSlide(r,assetsById)).sort((a,b)=>a.slide_number-b.slide_number);
     if(!set.slides.length)set.slides=[];
-    set.mainAssets=appAssets.filter(a=>a.story_set_id===set.id&&a.asset_type==='main');
-    set.references=appAssets.filter(a=>a.story_set_id===set.id&&a.asset_type==='reference');
-    set.logo=appAssets.find(a=>a.story_set_id===set.id&&a.asset_type==='logo')||null;
-    set.pinterestBoardUrl=boardUrl;
-    set.pinterestPins=appPins;
-    set.pinterestConnected=!!connection;
-    set.pinterestSyncedAt=connection?.last_synced_at||appPins[0]?.synced_at||'';
-    set.pinterestSnapshotImported=!connection&&appPins.length>0;
+
+    set.mainAssets=[...sharedMainAssets,...projectMainAssets];
+    set.references=[...sharedReferences,...projectReferences];
+    set.logo=projectLogo;
   }
-  return{project:rowToProject(project),storySets:sets};
+  return{project:rowToProject(project),storySets:sets,libraryItems:appLibraryItems};
 }
 
 export function serialiseProject(state){
@@ -146,7 +146,7 @@ export function applyRealtimeEvent(state,event,assetsById={}){
     return next;
   }
   if(table==='story_sets'){
-    if(type==='INSERT'&&!findSet(row.id)){const set=rowToStorySet(row);set.pinterestPins=next.storySets[0]?.pinterestPins||[];set.pinterestConnected=!!next.storySets[0]?.pinterestConnected;next.storySets.push(set);next.storySets.sort((a,b)=>a.sortOrder-b.sortOrder)}
+    if(type==='INSERT'&&!findSet(row.id)){const set=rowToStorySet(row);set.mainAssets=next.storySets[0]?.mainAssets||[];set.references=next.storySets[0]?.references||[];set.logo=next.storySets[0]?.logo||null;next.storySets.push(set);next.storySets.sort((a,b)=>a.sortOrder-b.sortOrder)}
     if(type==='UPDATE'){const set=findSet(row.id);if(set){const fresh=rowToStorySet(row);Object.assign(set,{title:fresh.title,rawStorySetCopy:fresh.rawStorySetCopy,parseStatus:fresh.parseStatus,parseWarnings:fresh.parseWarnings,overallDirection:fresh.overallDirection,sortOrder:fresh.sortOrder,revision:fresh.revision,updated_at:fresh.updated_at})}}
     if(type==='DELETE')next.storySets=next.storySets.filter(s=>s.id!==(old?.id||row?.id));
     return next;
@@ -173,13 +173,22 @@ export function applyRealtimeEvent(state,event,assetsById={}){
     set.slides=set.slides.map(s=>({...s,main:s.main?.id===asset.id?{...asset,file:s.main.file}:s.main,reference:s.reference?.id===asset.id?{...asset,file:s.reference.file}:s.reference}));
     return next;
   }
-  if(table==='pinterest_pins'){
-    const pin=type==='DELETE'?null:rowToPin(row,next.storySets[0]?.pinterestBoardUrl);
+  if(table==='library_items'){
+    const id=old?.id||row?.id;
+    if(type==='DELETE'){
+      for(const set of next.storySets){
+        set.mainAssets=set.mainAssets.filter(a=>a.id!==id);
+        set.references=set.references.filter(a=>a.id!==id);
+        set.slides=set.slides.map(s=>({...s,main:s.main?.id===id?null:s.main,reference:s.reference?.id===id?null:s.reference}));
+      }
+      return next;
+    }
+    const item=rowToLibraryItem(row);
     for(const set of next.storySets){
-      let pinsList=[...set.pinterestPins];
-      if(type==='DELETE')pinsList=pinsList.filter(p=>p.id!==(old?.pinterest_pin_id||''));
-      else{const i=pinsList.findIndex(p=>p.id===pin.id);if(i===-1)pinsList.push(pin);else pinsList[i]=pin}
-      set.pinterestPins=pinsList;
+      const key=item.library_type==='media'?'mainAssets':'references';
+      const without=set[key].filter(a=>a.id!==item.id);
+      set[key]=item.archived_at?without:[item,...without];
+      set.slides=set.slides.map(s=>({...s,main:s.main?.id===item.id?{...item,file:s.main.file}:s.main,reference:s.reference?.id===item.id?{...item,file:s.reference.file}:s.reference}));
     }
     return next;
   }
@@ -205,7 +214,7 @@ export function migrationPlan(stored){
   if(!sets.length)return{ok:false,reason:'No browser-local LadyTin project was found.'};
   const plan={ok:true,title:sets[0]?.title?`${sets[0].title} (imported)`:'Imported LadyTin Project',sets:[],assetWarnings:[]};
   sets.forEach((set,i)=>{
-    const slides=(Array.isArray(set.slides)?set.slides:[]).map((s,j)=>({slide_number:j+1,role:s.role||(j===0?'Opening':'Development'),overlay_text:s.overlay_text??s.copy??'',cta:s.cta||'',interaction:s.interaction||'',direction:s.direction??s.art??'',content_description:s.content_description||'',internal_note:s.internal_note||'',no_text_overlay:!!s.no_text_overlay,caption_cc:!!s.caption_cc,reference_mode:REFERENCE_MODES.includes(s.referenceMode)?s.referenceMode:'editorial_direction_only',pinterest_pin_id:s.pinterestPinId||null,pinterest_match_score:s.pinterestMatchScore??null,pinterest_match_reason:s.pinterestMatchReason||'',reference_locked:!!s.referenceLocked,localMainId:s.main?.id||s.assetId||'',localReferenceId:s.reference?.id||s.referenceId||''}));
+    const slides=(Array.isArray(set.slides)?set.slides:[]).map((s,j)=>({slide_number:j+1,role:s.role||(j===0?'Opening':'Development'),overlay_text:s.overlay_text??s.copy??'',cta:s.cta||'',interaction:s.interaction||'',direction:s.direction??s.art??'',content_description:s.content_description||'',internal_note:s.internal_note||'',no_text_overlay:!!s.no_text_overlay,caption_cc:!!s.caption_cc,reference_mode:REFERENCE_MODES.includes(s.referenceMode)?s.referenceMode:'editorial_direction_only',reference_match_score:s.referenceMatchScore??null,reference_match_reason:s.referenceMatchReason||'',reference_locked:!!s.referenceLocked,localMainId:s.main?.id||s.assetId||'',localReferenceId:s.reference?.id||s.referenceId||''}));
     const assets=[...(set.mainAssets||[]).map(a=>({...a,asset_type:'main'})),...(set.references||[]).map(a=>({...a,asset_type:'reference'})),...(set.logo?[{...set.logo,asset_type:'logo'}]:[])];
     for(const a of assets)if(!a.file)plan.assetWarnings.push(`"${a.filename||'unknown file'}" exists only as metadata — its original bytes are no longer available in this browser and must be re-uploaded.`);
     plan.sets.push({title:set.title||`Untitled Story Set ${i+1}`,rawStorySetCopy:set.rawStorySetCopy||'',overallDirection:set.overallDirection||'',sortOrder:i,slides,assets});
