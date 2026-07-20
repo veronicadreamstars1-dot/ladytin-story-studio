@@ -44,7 +44,7 @@ async function activateAnonymousSession(req:Request,ticket:string){
   const{data:userData,error:userError}=await admin.auth.getUser(accessToken);
   const user=userData?.user;
   if(userError||!user||user.is_anonymous!==true)return{ok:false,status:401,error:'Application access could not be verified.'};
-  const{data:consumed,error:consumeError}=await admin.rpc('consume_app_access_ticket',{ticket_hash:await sha256(ticket)});
+  const{data:consumed,error:consumeError}=await admin.rpc('consume_app_access_ticket',{p_ticket:await sha256(ticket)});
   if(consumeError||consumed!==true)return{ok:false,status:401,error:'This access attempt expired. Enter the password again.'};
   const expiresAt=new Date(Date.now()+SESSION_HOURS*60*60*1000).toISOString();
   const{error:updateError}=await admin.auth.admin.updateUserById(user.id,{app_metadata:{...(user.app_metadata||{}),ladytin_shared_access:true,ladytin_shared_access_expires_at:expiresAt}});
