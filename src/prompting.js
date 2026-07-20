@@ -96,7 +96,7 @@ function hasBinary(asset){return!!asset?.file&&typeof asset.file.arrayBuffer==='
 export function referenceReady(s,i,slides,set){
   const strategy=resolveReferenceStrategy(s,i,slides,set);
   if(strategy.mode==='manual_upload')return!!s.reference&&(hasBinary(s.reference)||!!s.reference.storage_path);
-  if(strategy.mode==='library_reference')return!!s.reference&&(hasBinary(s.reference)||!!s.reference.storage_path||s.reference.source_type==='google_drive');
+  if(strategy.mode==='library_reference')return!!s.reference&&(hasBinary(s.reference)||!!s.reference.storage_path);
   return strategy.mode==='editorial_direction_only'&&!!strategy.original_editorial_direction?.concept_title;
 }
 

@@ -3,7 +3,6 @@ import JSZip from'jszip';
 const loadZip=async blob=>JSZip.loadAsync(await blob.arrayBuffer());
 import{REFERENCE_MODES,REFERENCE_TYPOGRAPHY_GUIDANCE,applyReferencePlan,buildReferencePlan,editorialDirectionForSlide,hashString,inferVisualTags,recommendReferencesForSlide,resolveReferenceStrategy,scoreReferenceForSlide}from'../src/library.js';
 import{bulkPrompt,makeSlideZip,makeZip,parseJson,pretty,readiness,slidePrompt}from'../src/prompting.js';
-import{classifyDriveFile,driveSetupRequirements,mergeDriveSync,normaliseDriveFile}from'../src/google-drive.js';
 
 const file=(name,type,bytes=[1,2,3])=>({id:name,filename:name,title:name,type,file:new Blob([new Uint8Array(bytes)],{type})});
 const refs=[
@@ -62,13 +61,4 @@ assert.ok(mixedNames.some(x=>x.includes('/selected-references/')));
 assert.ok(mixedNames.some(x=>x.endsWith('/bulk-story-set-prompt.json')));
 assert.equal(bulkPrompt(mixedSet.slides,mixedSet,null).slides.length,3);
 
-const native=classifyDriveFile({name:'story doc',mimeType:'application/vnd.google-apps.document'});
-assert.equal(native.supported,false);
-const driveFile=normaliseDriveFile({id:'g1',name:'layout.pdf',mimeType:'application/pdf',size:'42',parents:['root'],webViewLink:'https://drive.test/file',modifiedTime:'2026-07-20T00:00:00Z'},'reference');
-assert.equal(driveFile.source_type,'google_drive');
-assert.equal(driveFile.sync_supported,true);
-const sync=mergeDriveSync([], [driveFile], 'reference');
-assert.equal(sync.summary.files_added,1);
-assert.equal(driveSetupRequirements().message,'Google Drive is not configured yet.');
-
-console.log('Shared library matching, reference modes, JSON, ZIP and Drive sync helper tests passed');
+console.log('Shared library matching, reference modes, JSON and ZIP helper tests passed');

@@ -54,8 +54,6 @@ The older invitation schema is retained only as historical database compatibilit
 
 - `shared-access`: password verification, lockout, one-time ticket issue and anonymous-session activation.
 
-Google Drive library sync is optional and remains disabled until the server-only OAuth secrets in `GOOGLE_DRIVE_LIBRARY_SETUP.md` are configured.
-
 ## Verification
 
 ```sql
