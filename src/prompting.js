@@ -1,5 +1,5 @@
 import JSZip from'jszip';
-import{ORIGINAL_TYPOGRAPHY_GUIDANCE,PINTEREST_TYPOGRAPHY_GUIDANCE,resolveReferenceStrategy,safePinUrl}from'./pinterest.js';
+import{ORIGINAL_TYPOGRAPHY_GUIDANCE,REFERENCE_TYPOGRAPHY_GUIDANCE,resolveReferenceStrategy}from'./library.js';
 
 export const n=i=>String(i+1).padStart(2,'0');
 export const slug=s=>String(s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'untitled-story-set';
@@ -9,8 +9,8 @@ export const parseJson=s=>{try{return{ok:true,value:JSON.parse(s)}}catch(e){retu
 const creativeRules=[
   'The copy and visual must directly match and make emotional sense.',
   'Treat every slide as one part of a continuous story, not as an unrelated social-media template.',
-  'Use any selected Pinterest reference only for transferable design logic: hierarchy, crop, balance, scale, negative space, rhythm, texture, typography placement, framing, tension and pacing.',
-  'Do not reproduce a Pinterest reference’s exact artwork, copy, branding, model, garment or proprietary graphic elements.',
+  'Use any selected library reference only for transferable design logic: hierarchy, crop, balance, scale, negative space, rhythm, texture, typography placement, framing, tension and pacing.',
+  'Do not reproduce a reference’s exact artwork, copy, branding, model, garment or proprietary graphic elements.',
   'Choose typography behaviour from the selected reference or Original Editorial Direction, then maintain one coherent set-wide system without copying an exact proprietary typeface.',
   'Keep the result nuanced, tasteful, restrained, premium, fashion-aware and editorially designed.',
   'Avoid generic Canva layouts, cluttered collages, random decorative shapes, tacky fashion graphics, excessive gold, stock-photo aesthetics and obvious AI artefacts.',
@@ -22,8 +22,8 @@ const creativeRules=[
 const lockedPreservationRules={preserve_face:true,preserve_identity:true,preserve_expression:true,preserve_body:true,preserve_pose:true,preserve_outfit:true,preserve_garment_design:true,preserve_fabric:true,preserve_print:true,preserve_embroidery:true,preserve_colour:true,preserve_jewellery:true,preserve_styling:true,preserve_copy:true,never_redraw_logo:true};
 
 const typographyBlock=strategy=>({
-  source:strategy?.source==='pinterest'?'selected_reference_logic':'original_editorial_direction',
-  behaviour:strategy?.source==='pinterest'?PINTEREST_TYPOGRAPHY_GUIDANCE:ORIGINAL_TYPOGRAPHY_GUIDANCE,
+  source:strategy?.source==='reference_library'?'selected_reference_logic':'original_editorial_direction',
+  behaviour:strategy?.source==='reference_library'?REFERENCE_TYPOGRAPHY_GUIDANCE:ORIGINAL_TYPOGRAPHY_GUIDANCE,
   set_consistency:'Use one controlled typography family or deliberately related system across the complete story set. Vary scale, placement, case, line breaks and spacing only when the narrative requires it.',
   avoid:['generic default typography','random mixed typefaces','oversized display text without narrative reason','literal imitation of a reference typeface']
 });
@@ -46,7 +46,7 @@ export function storyArc(slides){
 function referencePlan(slides,set){
   return slides.map((s,i)=>{
     const strategy=resolveReferenceStrategy(s,i,slides,set);
-    return{slide_number:i+1,mode:strategy.mode,pinterest_pin_id:strategy.pinterest_pin_id,pinterest_pin_url:strategy.pinterest_pin_url,manual_reference_filename:strategy.reference_filename,match_score:strategy.match_score,match_reason:strategy.match_reason,fallback_to_editorial_direction:strategy.mode==='editorial_direction_only'};
+    return{slide_number:i+1,mode:strategy.mode,library_item_id:strategy.library_item_id,reference_title:strategy.reference_title,reference_filename:strategy.reference_filename,source_location:strategy.source_location,match_score:strategy.match_score,match_reason:strategy.match_reason,fallback_to_editorial_direction:strategy.mode==='editorial_direction_only'};
   });
 }
 
@@ -59,7 +59,7 @@ export function slidePrompt(s,i,slides,set,logo){
     exact_copy:{overlay_text:copyOf(s),cta:s.cta||'',interaction:s.interaction||'',no_text_overlay:!!s.no_text_overlay,caption_cc:!!s.caption_cc,preserve_exactly:true},
     attachments:{
       main_source_asset:{id:main?.id||s.assetId||'',filename:main?.filename||'',file_type:main?.type||'',required:true},
-      manual_design_reference:{id:s.reference?.id||s.referenceId||'',filename:strategy.mode==='manual_upload'?(s.reference?.filename||''):'',file_type:strategy.mode==='manual_upload'?(s.reference?.type||''):'',required:false},
+      selected_design_reference:{id:s.reference?.id||s.referenceId||'',filename:strategy.mode!=='editorial_direction_only'?(s.reference?.filename||''):'',file_type:strategy.mode!=='editorial_direction_only'?(s.reference?.type||''):'',reference_source:strategy.mode,required:strategy.mode!=='editorial_direction_only'},
       logo_overlay:{filename:logo?.filename||'',required_when_applicable:true,instruction:'Use only the exact uploaded logo as a locked final overlay. Never redraw or regenerate it.'}
     },
     reference_strategy:strategy,
@@ -72,20 +72,20 @@ export function slidePrompt(s,i,slides,set,logo){
 }
 
 export function bulkPrompt(slides,set,logo){
-  const hasPinterest=slides.some((s,i)=>resolveReferenceStrategy(s,i,slides,set).source==='pinterest');
-  const setTypography=typographyBlock({source:hasPinterest?'pinterest':'generated_editorial_direction'});
+  const hasLibraryReference=slides.some((s,i)=>resolveReferenceStrategy(s,i,slides,set).source==='reference_library');
+  const setTypography=typographyBlock({source:hasLibraryReference?'reference_library':'generated_editorial_direction'});
   return{
     schema_version:'1.2',generation_mode:'bulk_story_set',project:'LadyTin Story Studio',brand:{vertical:'LadyTin Label',collection:'Laya'},
     story_set:{id:set.id||slug(set.title),title:set.title||'',slide_count:slides.length,overall_set_direction:set.overallDirection||'',output_order:'sequential'},
     typography:setTypography,
     story_arc:storyArc(slides),
-    complete_reference_plan:{board_url:set.pinterestBoardUrl||'',common_design_system:set.referencePlan?.common_design_system||{},slides:referencePlan(slides,set),reference_repetition_warnings:set.referencePlan?.repetition_warnings||[],fallback_decisions:slides.map((s,i)=>{const x=resolveReferenceStrategy(s,i,slides,set);return x.mode==='editorial_direction_only'?{slide_number:i+1,decision:'Original editorial direction generated from the complete story set.'}:null}).filter(Boolean)},
+    complete_reference_plan:{common_design_system:set.referencePlan?.common_design_system||{},slides:referencePlan(slides,set),reference_repetition_warnings:set.referencePlan?.repetition_warnings||[],fallback_decisions:slides.map((s,i)=>{const x=resolveReferenceStrategy(s,i,slides,set);return x.mode==='editorial_direction_only'?{slide_number:i+1,decision:'Original editorial direction generated from the complete story set.'}:null}).filter(Boolean)},
     set_wide_consistency:{study_the_full_story_set_before_generating_slide_1:true,treat_all_slides_as_one_continuous_story:true,maintain_consistent_typography_behaviour:true,maintain_consistent_margins_and_spacing:true,maintain_one_controlled_colour_grade:true,maintain_one_restrained_motif_family:true,maintain_consistent_image_treatment:true,maintain_emotional_and_narrative_progression:true,use_different_references_only_for_slide_specific_layout_behaviour:true,do_not_create_unrelated_designs_for_individual_slides:true,overall_set_direction:set.overallDirection||''},
     generation_instruction:{study_the_complete_story_set_first:true,generate_all_slides_in_this_request:true,stop_after_first_slide:false,generate_in_slide_order:true,output_each_slide_separately:true,preserve_story_continuity:true,do_not_create_a_collage:true},
     locked_preservation_rules:{...lockedPreservationRules},creative_rules:[...creativeRules],
     slides:slides.map((s,i)=>{
       const main=s.main||null,strategy=resolveReferenceStrategy(s,i,slides,set);
-      return{slide_number:i+1,role_in_arc:roleOf(s,i,slides.length),exact_copy:{overlay_text:copyOf(s),cta:s.cta||'',interaction:s.interaction||'',no_text_overlay:!!s.no_text_overlay,caption_cc:!!s.caption_cc,preserve_exactly:true},attachments:{main_source_asset:{id:main?.id||s.assetId||'',filename:main?.filename||'',file_type:main?.type||''},manual_design_reference:{id:s.reference?.id||'',filename:strategy.mode==='manual_upload'?(s.reference?.filename||''):'',file_type:strategy.mode==='manual_upload'?(s.reference?.type||''):''},logo_overlay:{filename:logo?.filename||''}},reference_strategy:strategy,typography:typographyBlock(strategy),art_direction:{content_description:s.content_description||'',additional_user_direction:directionOf(s),internal_production_note:s.internal_note||'',composition:strategy.design_analysis?.composition||strategy.original_editorial_direction?.composition||'',continuity:`Slide ${i+1} must remain related to the complete set while serving its distinct ${roleOf(s,i,slides.length)} role.`},output:{count:1,format:'PNG',aspect_ratio:'9:16',separate_image:true}};
+      return{slide_number:i+1,role_in_arc:roleOf(s,i,slides.length),exact_copy:{overlay_text:copyOf(s),cta:s.cta||'',interaction:s.interaction||'',no_text_overlay:!!s.no_text_overlay,caption_cc:!!s.caption_cc,preserve_exactly:true},attachments:{main_source_asset:{id:main?.id||s.assetId||'',filename:main?.filename||'',file_type:main?.type||''},selected_design_reference:{id:s.reference?.id||'',filename:strategy.mode!=='editorial_direction_only'?(s.reference?.filename||''):'',file_type:strategy.mode!=='editorial_direction_only'?(s.reference?.type||''):'',reference_source:strategy.mode},logo_overlay:{filename:logo?.filename||''}},reference_strategy:strategy,typography:typographyBlock(strategy),art_direction:{content_description:s.content_description||'',additional_user_direction:directionOf(s),internal_production_note:s.internal_note||'',composition:strategy.design_analysis?.composition||strategy.original_editorial_direction?.composition||'',continuity:`Slide ${i+1} must remain related to the complete set while serving its distinct ${roleOf(s,i,slides.length)} role.`},output:{count:1,format:'PNG',aspect_ratio:'9:16',separate_image:true}};
     }),
     expected_results:{number_of_images:slides.length,file_naming:slides.map((_,i)=>`slide-${n(i)}.png`)}
   };
@@ -96,7 +96,7 @@ function hasBinary(asset){return!!asset?.file&&typeof asset.file.arrayBuffer==='
 export function referenceReady(s,i,slides,set){
   const strategy=resolveReferenceStrategy(s,i,slides,set);
   if(strategy.mode==='manual_upload')return!!s.reference&&(hasBinary(s.reference)||!!s.reference.storage_path);
-  if(strategy.mode==='pinterest_auto'||strategy.mode==='pinterest_selected')return!!strategy.pinterest_pin_id&&!!safePinUrl(strategy.pinterest_pin_url);
+  if(strategy.mode==='library_reference')return!!s.reference&&(hasBinary(s.reference)||!!s.reference.storage_path||s.reference.source_type==='google_drive');
   return strategy.mode==='editorial_direction_only'&&!!strategy.original_editorial_direction?.concept_title;
 }
 
@@ -142,11 +142,6 @@ async function generateZip(zip){
   return blob;
 }
 
-function pinterestMetadata(strategy,set){
-  const pin=(set.pinterestPins||[]).find(p=>p.id===strategy.pinterest_pin_id);
-  return{schema_version:'1.0',source:'Pinterest',board_url:set.pinterestBoardUrl||'',pin_id:strategy.pinterest_pin_id,pin_url:strategy.pinterest_pin_url,title:pin?.title||'',description:pin?.description||'',visual_tags:pin?.visual_tags||{},design_analysis:strategy.design_analysis||pin?.design_analysis||{},match_score:strategy.match_score,match_reason:strategy.match_reason,typography_guidance:PINTEREST_TYPOGRAPHY_GUIDANCE,source_attribution:'Pinterest reference metadata. Use only transferable editorial design logic; do not copy proprietary artwork.',synchronised_timestamp:pin?.synced_at||set.pinterestSyncedAt||'',reference_binary_included:false};
-}
-
 export async function makeSlideZip(s,i,slides,set,logo,remoteLoader){
   const row=readiness(slides,set,logo)[i];
   if(!s.main)throw new Error('Assign a main asset before downloading this slide package.');
@@ -155,18 +150,14 @@ export async function makeSlideZip(s,i,slides,set,logo,remoteLoader){
   const sn=n(i),root=`LadyTin-${slug(set.title)}-slide-${sn}`,zip=new JSZip(),folder=zip.folder(root),strategy=resolveReferenceStrategy(s,i,slides,set),mainName=`main-asset-${safeFilename(s.main.filename,'main-asset')}`,promptName=`slide-${sn}-prompt.json`,mainBytes=await binary(s.main,'main asset',i+1,remoteLoader);
   folder.file(promptName,validatedJson(slidePrompt(s,i,slides,set,logo),promptName));
   folder.file(mainName,mainBytes,{binary:true});
-  let refName='',pinMeta='';
-  if(strategy.mode==='manual_upload'){
+  let refName='';
+  if(strategy.mode==='manual_upload'||strategy.mode==='library_reference'){
     refName=`selected-reference-${safeFilename(s.reference.filename,'selected-reference')}`;
     folder.file(refName,await binary(s.reference,'design reference',i+1,remoteLoader),{binary:true});
   }
-  if(strategy.source==='pinterest'){
-    pinMeta='pinterest-reference.json';
-    folder.file(pinMeta,validatedJson(pinterestMetadata(strategy,set),pinMeta));
-  }
-  const manifest={schema_version:'1.0',package_type:'LadyTin_single_story_slide_generation',story_set_title:set.title||'',slide_number:i+1,reference_mode:strategy.mode,reference_requirement_satisfied:true,reference_binary_included:!!refName,files:{prompt:promptName,main_asset:mainName,selected_reference:refName,pinterest_reference_metadata:pinMeta},ready_for_generation:true,missing_requirements:[]};
+  const manifest={schema_version:'1.0',package_type:'LadyTin_single_story_slide_generation',story_set_title:set.title||'',slide_number:i+1,reference_mode:strategy.mode,reference_requirement_satisfied:true,reference_binary_included:!!refName,files:{prompt:promptName,main_asset:mainName,selected_reference:refName},ready_for_generation:true,missing_requirements:[]};
   folder.file('manifest.json',validatedJson(manifest,'manifest.json'));
-  folder.file('README.txt',`Upload ${promptName} together with the main asset${refName?' and the selected manual reference':''}. Follow the prompt's typography behaviour and complete-set consistency rules. Pinterest references supply transferable editorial logic only; do not copy exact artwork or typefaces.`);
+  folder.file('README.txt',`Upload ${promptName} together with the main asset${refName?' and the selected reference':''}. Follow the prompt's typography behaviour and complete-set consistency rules. References supply transferable editorial logic only; do not copy exact artwork or typefaces.`);
   return generateZip(zip);
 }
 
@@ -175,31 +166,23 @@ export async function makeZip(slides,set,logo,incomplete=false,remoteLoader){
   if(!incomplete&&rows.some(r=>!r.ready))throw new Error('Resolve every slide’s main asset and reference strategy before downloading the complete story-set package.');
   const root=`LadyTin-${slug(set.title)}-bulk-generation-package`,zip=new JSZip(),folder=zip.folder(root);
   folder.file('bulk-story-set-prompt.json',validatedJson(bulkPrompt(slides,set,logo),'bulk-story-set-prompt.json'));
-  folder.file('README.txt','Upload bulk-story-set-prompt.json and all main assets. Manual references are in manual-references. Pinterest metadata is in pinterest-references and should be used for transferable design logic only. Slides using Original Editorial Direction require no external reference binary. Study the complete set before generating every slide in order as a separate 9:16 image. Do not create a collage. Follow the typography behaviour specified per slide while maintaining one coherent set-wide system.');
-  const manifest={schema_version:'1.2',package_type:'LadyTin_bulk_story_set_generation',story_set_id:set.id||slug(set.title),story_set_title:set.title,slide_count:slides.length,files:{bulk_prompt:'bulk-story-set-prompt.json',slide_prompts_directory:'slide-prompts/',main_assets_directory:'main-assets/',manual_references_directory:'manual-references/',pinterest_references_directory:'pinterest-references/',logos_directory:'logos/'},slides:[]};
-  const includedPins=new Set();
+  folder.file('README.txt','Upload bulk-story-set-prompt.json and all main assets. Selected references are in selected-references. Slides using Original Editorial Direction require no external reference binary. Study the complete set before generating every slide in order as a separate 9:16 image. Do not create a collage. Follow the typography behaviour specified per slide while maintaining one coherent set-wide system.');
+  const manifest={schema_version:'1.2',package_type:'LadyTin_bulk_story_set_generation',story_set_id:set.id||slug(set.title),story_set_title:set.title,slide_count:slides.length,files:{bulk_prompt:'bulk-story-set-prompt.json',slide_prompts_directory:'slide-prompts/',main_assets_directory:'main-assets/',references_directory:'selected-references/',logos_directory:'logos/'},slides:[]};
   for(const[i,s]of slides.entries()){
     const sn=n(i),promptPath=`slide-prompts/slide-${sn}-prompt.json`,strategy=resolveReferenceStrategy(s,i,slides,set),missing=[...rows[i].missing];
     folder.file(promptPath,validatedJson(slidePrompt(s,i,slides,set,logo),promptPath));
-    let mainPath='',refPath='',pinPath='';
+    let mainPath='',refPath='';
     if(s.main){
       mainPath=`main-assets/slide-${sn}-${safeFilename(s.main.filename,'main-asset')}`;
       try{folder.file(mainPath,await binary(s.main,'main asset',i+1,remoteLoader),{binary:true})}
       catch(error){if(!incomplete)throw error;mainPath='';missing.push(error.message)}
     }
-    if(strategy.mode==='manual_upload'&&s.reference){
-      refPath=`manual-references/slide-${sn}-${safeFilename(s.reference.filename,'selected-reference')}`;
+    if((strategy.mode==='manual_upload'||strategy.mode==='library_reference')&&s.reference){
+      refPath=`selected-references/slide-${sn}-${safeFilename(s.reference.filename,'selected-reference')}`;
       try{folder.file(refPath,await binary(s.reference,'design reference',i+1,remoteLoader),{binary:true})}
       catch(error){if(!incomplete)throw error;refPath='';missing.push(error.message)}
     }
-    if(strategy.source==='pinterest'){
-      pinPath=`pinterest-references/pin-${safeFilename(strategy.pinterest_pin_id,'pin')}.json`;
-      if(!includedPins.has(strategy.pinterest_pin_id)){
-        folder.file(pinPath,validatedJson(pinterestMetadata(strategy,set),pinPath));
-        includedPins.add(strategy.pinterest_pin_id);
-      }
-    }
-    manifest.slides.push({slide_number:i+1,prompt_file:promptPath,main_asset_file:mainPath,manual_reference_file:refPath,pinterest_reference_file:pinPath,reference_mode:strategy.mode,reference_requirement_satisfied:rows[i].reference,reference_binary_included:!!refPath,logo_file:logo?`logos/${safeFilename(logo.filename,'logo')}`:'',ready_for_generation:rows[i].ready&&missing.length===0,missing_requirements:[...new Set(missing)]});
+    manifest.slides.push({slide_number:i+1,prompt_file:promptPath,main_asset_file:mainPath,reference_file:refPath,reference_mode:strategy.mode,reference_requirement_satisfied:rows[i].reference,reference_binary_included:!!refPath,logo_file:logo?`logos/${safeFilename(logo.filename,'logo')}`:'',ready_for_generation:rows[i].ready&&missing.length===0,missing_requirements:[...new Set(missing)]});
   }
   if(logo){
     try{folder.file(`logos/${safeFilename(logo.filename,'logo')}`,await binary(logo,'logo',0,remoteLoader),{binary:true})}
