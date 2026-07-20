@@ -8,6 +8,32 @@ const BUCKET='project-files';
 export const seenRevisions=new Map();
 const record=(table,row)=>{if(row?.id&&Number.isFinite(Number(row.revision)))seenRevisions.set(revisionKey(table,row.id),Number(row.revision))};
 const fail=(error,fallback)=>{throw new Error(error?.message||fallback)};
+const previewable=item=>item?.storage_path&&(/^(image|video)\//.test(item.type||'')||item.type==='application/pdf');
+async function attachPreviewUrls(project){
+  const byPath=new Map();
+  const collect=item=>{
+    if(!previewable(item))return;
+    const path=item.thumbnail_path||item.storage_path;
+    if(!path)return;
+    if(!byPath.has(path))byPath.set(path,[]);
+    byPath.get(path).push(item);
+  };
+  (project.libraryItems||[]).forEach(collect);
+  for(const set of project.storySets||[]){
+    [...(set.mainAssets||[]),...(set.references||[]),set.logo,...(set.slides||[]).flatMap(slide=>[slide.main,slide.reference])].forEach(collect);
+  }
+  const paths=[...byPath.keys()];
+  for(let index=0;index<paths.length;index+=50){
+    const chunk=paths.slice(index,index+50);
+    const{data,error}=await supabase.storage.from(BUCKET).createSignedUrls(chunk,3600);
+    if(error){console.warn('Could not create shared library preview links:',error.message);continue}
+    (data||[]).forEach(result=>{
+      if(!result?.path||!result.signedUrl)return;
+      (byPath.get(result.path)||[]).forEach(item=>item.previewUrl=result.signedUrl);
+    });
+  }
+  return project;
+}
 
 export async function signOut(){await supabase.auth.signOut()}
 
@@ -55,7 +81,7 @@ export async function loadProject(projectId){
     slides=result.data||[];
   }
   [p.data,...(sets.data||[]),...slides].forEach(row=>record(row.owner_id!==undefined?'projects':row.project_id!==undefined?'story_sets':'slides',row));
-  return hydrateProject({project:p.data,storySets:sets.data||[],slides,assets:assets.data||[],libraryItems:libraryItems.data||[]});
+  return attachPreviewUrls(hydrateProject({project:p.data,storySets:sets.data||[],slides,assets:assets.data||[],libraryItems:libraryItems.data||[]}));
 }
 
 // ---------- story sets ----------
